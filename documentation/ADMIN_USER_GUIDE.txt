@@ -1,0 +1,16 @@
+RAVENVOTE - SYSTEM DOCUMENTATION
+USER ROLE: ADMINISTRATOR
+
+1. YOUR ROLE IN THE SYSTEM
+As a RavenVote Administrator, you are responsible for managing the integrity of the election process. Your portal allows you to manage voters, candidates, and monitor live results.
+
+2. CORE WORKFLOWS
+- Voter Management: Import student lists, verify registration status, and monitor who has voted.
+- Candidate Management: Add candidates for different positions, upload their photos, and manage their slogans/manifestos.
+- Election Monitoring: View real-time statistics of voter turnout and live results per position.
+- System Security: Ensure only authorized students can access the voting screens using Index Number and OTP verification.
+
+3. ETHICAL GUIDELINES
+- Neutrality: Maintain strict impartiality throughout the election process.
+- Privacy: Protect student data and ensure the secrecy of individual votes.
+- Transparency: Provide accurate reports and logs if requested by the electoral commission.
