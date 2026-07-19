@@ -18,8 +18,31 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _otherRankController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  String? _selectedRank;
+
+  final List<String> _ranks = [
+    'HOD', 
+    'Dean Student', 
+    'Technician', 
+    'TA', 
+    'Lecturer', 
+    'Other'
+  ];
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _surnameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _otherRankController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleRegister() async {
     final firstName = _firstNameController.text.trim();
@@ -27,8 +50,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
+    
+    String rank = _selectedRank ?? '';
+    if (rank == 'Other') {
+      rank = _otherRankController.text.trim();
+    }
 
-    if (firstName.isEmpty || surname.isEmpty || email.isEmpty || password.isEmpty) {
+    if (firstName.isEmpty || surname.isEmpty || email.isEmpty || password.isEmpty || rank.isEmpty) {
       _showErrorSnackBar('Please fill all required fields');
       return;
     }
@@ -51,6 +79,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         password,
         firstName: firstName,
         surname: surname,
+        rank: rank,
       );
       
       if (response.user != null && mounted) {
@@ -194,6 +223,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         formatters: [FilteringTextInputFormatter.digitsOnly],
                       ),
                       const SizedBox(height: 16),
+                      _buildRankDropdown(isDark, theme),
+                      if (_selectedRank == 'Other') ...[
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _otherRankController,
+                          label: 'Specify Rank',
+                          icon: Icons.work_outline_rounded,
+                          isDark: isDark,
+                        ),
+                      ],
+                      const SizedBox(height: 16),
                       _buildTextField(
                         controller: _passwordController,
                         label: 'Password',
@@ -284,6 +324,30 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           style: GoogleFonts.inter(fontSize: 12, color: Colors.grey),
         ),
       ],
+    );
+  }
+
+  Widget _buildRankDropdown(bool isDark, ThemeData theme) {
+    return DropdownButtonFormField<String>(
+      value: _selectedRank,
+      dropdownColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+      decoration: InputDecoration(
+        labelText: 'Professional Rank',
+        prefixIcon: const Icon(Icons.workspace_premium_rounded, size: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      items: _ranks.map((rank) {
+        return DropdownMenuItem(
+          value: rank,
+          child: Text(rank),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          _selectedRank = value;
+        });
+      },
     );
   }
 

@@ -1,5 +1,5 @@
 name: vote_z
-description: "RavenVote - Secure UENR E-Voting System"
+description: "RavenVote by TechRaven LTD - Secure Voting System"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -75,7 +75,7 @@ dev_dependencies:
 
 msix_config:
   display_name: RavenVote
-  publisher_display_name: UENR Electoral Commission
+  publisher_display_name: TechRaven LTD
   title_bar_background_color: "#003366"
   logo_path: assets/logo/logo.png
   capabilities: internetClient, location, privateNetworkClientServer

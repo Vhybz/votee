@@ -11,6 +11,8 @@ import '../../models/user_model.dart';
 import '../../models/election_models.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import '../../services/report_service.dart';
+import '../../services/backup_service.dart';
 import 'dart:math' as math;
 
 class VotingAdminDashboard extends ConsumerStatefulWidget {
@@ -21,6 +23,15 @@ class VotingAdminDashboard extends ConsumerStatefulWidget {
 }
 
 class _VotingAdminDashboardState extends ConsumerState<VotingAdminDashboard> {
+  @override
+  void initState() {
+    super.initState();
+    // Silent Automated Backup trigger on admin login/dashboard access
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      BackupService().autoBackupIfRequired();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -189,7 +200,26 @@ class _VotingAdminDashboardState extends ConsumerState<VotingAdminDashboard> {
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: () {},
+                  onPressed: () async {
+                    final stats = ref.read(electionStatsProvider).value;
+                    final positions = ref.read(positionsProvider).value;
+                    final candidates = ref.read(candidatesProvider).value;
+                    final settings = ref.read(electionSettingsProvider).value;
+
+                    if (stats == null || positions == null || candidates == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please wait for data to load before certifying.')),
+                      );
+                      return;
+                    }
+
+                    await ReportService.generateElectionReport(
+                      title: settings?.electionTitle ?? 'RavenVote Election',
+                      positions: positions,
+                      candidates: candidates,
+                      stats: stats,
+                    );
+                  },
                   icon: const Icon(Icons.file_download_outlined, size: 16),
                   label: const Text('CERTIFY', style: TextStyle(fontSize: 12)),
                   style: ElevatedButton.styleFrom(
@@ -224,10 +254,10 @@ class _VotingAdminDashboardState extends ConsumerState<VotingAdminDashboard> {
             _buildKPICard('REGISTRY', stats.totalVoters.toString(), Icons.people_outline_rounded, theme.colorScheme.primary, 'Total Students'),
             GestureDetector(
               onTap: () => Navigator.pushReplacementNamed(context, '/admin/logs'),
-              child: _buildKPICard('BALLOTS', stats.totalVotesCast.toString(), Icons.how_to_vote_rounded, AppColors.uenrGreen, '${stats.turnoutPercentage.toStringAsFixed(1)}% Turnout'),
+              child: _buildKPICard('BALLOTS', stats.totalVotesCast.toString(), Icons.how_to_vote_rounded, AppColors.primaryGreen, '${stats.turnoutPercentage.toStringAsFixed(1)}% Turnout'),
             ),
-            _buildKPICard('POLLS', stats.activePolls.toString(), Icons.analytics_outlined, AppColors.uenrYellow, 'Live Positions'),
-            _buildKPICard('TIMER', "${stats.timeRemaining.inHours.toString().padLeft(2, '0')}:${(stats.timeRemaining.inMinutes % 60).toString().padLeft(2, '0')}:${(stats.timeRemaining.inSeconds % 60).toString().padLeft(2, '0')}", Icons.timer_outlined, AppColors.uenrBrown, 'System Lockdown'),
+            _buildKPICard('POLLS', stats.activePolls.toString(), Icons.analytics_outlined, AppColors.primaryYellow, 'Live Positions'),
+            _buildKPICard('TIMER', "${stats.timeRemaining.inHours.toString().padLeft(2, '0')}:${(stats.timeRemaining.inMinutes % 60).toString().padLeft(2, '0')}:${(stats.timeRemaining.inSeconds % 60).toString().padLeft(2, '0')}", Icons.timer_outlined, AppColors.primaryBrown, 'System Lockdown'),
           ],
         );
       }
@@ -478,7 +508,7 @@ class _VotingAdminDashboardState extends ConsumerState<VotingAdminDashboard> {
                   PieChartData(
                     sections: stats.votesBySchool.entries.map((entry) {
                       final index = stats.votesBySchool.keys.toList().indexOf(entry.key);
-                      final colors = [theme.colorScheme.primary, AppColors.uenrGreen, AppColors.uenrYellow, AppColors.uenrBrown, Colors.purple, Colors.orange];
+                      final colors = [theme.colorScheme.primary, AppColors.primaryGreen, AppColors.primaryYellow, AppColors.primaryBrown, Colors.purple, Colors.orange];
                       return PieChartSectionData(
                         color: colors[index % colors.length], 
                         value: entry.value.toDouble(), 
@@ -494,7 +524,7 @@ class _VotingAdminDashboardState extends ConsumerState<VotingAdminDashboard> {
               const SizedBox(height: 32),
               ...stats.votesBySchool.entries.map((entry) {
                 final index = stats.votesBySchool.keys.toList().indexOf(entry.key);
-                final colors = [theme.colorScheme.primary, AppColors.uenrGreen, AppColors.uenrYellow, AppColors.uenrBrown, Colors.purple, Colors.orange];
+                final colors = [theme.colorScheme.primary, AppColors.primaryGreen, AppColors.primaryYellow, AppColors.primaryBrown, Colors.purple, Colors.orange];
                 final percentage = totalVotes > 0 ? (entry.value / totalVotes * 100).toStringAsFixed(1) : '0';
                 return _buildLegendItem(entry.key, colors[index % colors.length], '$percentage%');
               }),

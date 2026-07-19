@@ -1,11 +1,11 @@
 {
-    "name": "RavenVote - UENR E-Voting",
-    "short_name": "RavenVote",
+    "name": "RavenVote by TechRaven LTD",
+    "short_name": "RavenVote by TechRaven LTD",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#003366",
     "theme_color": "#003366",
-    "description": "Secure, Transparent, and Live E-Voting System for UENR",
+    "description": "Secure, Transparent, and Live Voting System",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

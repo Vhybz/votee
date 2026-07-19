@@ -9,13 +9,22 @@ import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
 import '../../services/theme_provider.dart';
 import '../../services/election_provider.dart';
+import '../../services/backup_service.dart';
 import '../../models/election_models.dart';
+import '../../models/user_model.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool _isBackingUp = false;
+
+  @override
+  Widget build(BuildContext context) {
     final themeState = ref.watch(themeProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -72,6 +81,10 @@ class SettingsScreen extends ConsumerWidget {
                       _buildThemeSetting(context, ref, themeState),
                       
                       const SizedBox(height: 24),
+                      _buildSectionTitle(context, 'System Security'),
+                      _buildBackupCard(context),
+
+                      const SizedBox(height: 24),
                       _buildSectionTitle(context, 'Election Window'),
                       settingsAsync.when(
                         data: (settings) => _buildElectionTimingCard(context, ref, settings),
@@ -98,8 +111,10 @@ class SettingsScreen extends ConsumerWidget {
                               Icons.security,
                               () {},
                             ),
-                            const SizedBox(height: 32),
-                            _buildDangerZone(context, ref),
+                            if (user?.role == UserRole.superAdmin) ...[
+                              const SizedBox(height: 32),
+                              _buildDangerZone(context, ref),
+                            ],
                           ],
                         ),
                         loading: () => const SizedBox(),
@@ -114,6 +129,58 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildBackupCard(BuildContext context) {
+    return Card(
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Colors.blue,
+                child: Icon(Icons.cloud_download_rounded, color: Colors.white, size: 20),
+              ),
+              title: const Text('System Snapshot', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              subtitle: const Text('Export all election data, logs, and student records to a JSON file.', style: TextStyle(fontSize: 11)),
+              trailing: _isBackingUp 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : ElevatedButton(
+                    onPressed: _handleManualBackup,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    ),
+                    child: const Text('BACKUP NOW', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleManualBackup() async {
+    setState(() => _isBackingUp = true);
+    try {
+      await BackupService().performFullBackup();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup created and downloaded successfully.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBackingUp = false);
+    }
   }
 
   Widget _buildSectionTitle(BuildContext context, String title) {
@@ -157,8 +224,8 @@ class SettingsScreen extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _colorPicker(ref, Colors.black, state.primaryColor, state.mode == ThemeMode.dark),
-                  _colorPicker(ref, AppColors.uenrBlue, state.primaryColor, state.mode == ThemeMode.dark),
-                  _colorPicker(ref, AppColors.uenrGreen, state.primaryColor, state.mode == ThemeMode.dark),
+                  _colorPicker(ref, AppColors.primaryBlue, state.primaryColor, state.mode == ThemeMode.dark),
+                  _colorPicker(ref, AppColors.primaryGreen, state.primaryColor, state.mode == ThemeMode.dark),
                 ],
               ),
             ),

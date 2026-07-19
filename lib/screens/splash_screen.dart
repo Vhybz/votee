@@ -116,7 +116,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with TickerProvider
               ),
               const SizedBox(height: 8),
               Text(
-                'SECURE UENR E-VOTING',
+                'by TechRaven LTD',
                 style: GoogleFonts.inter(
                   color: Colors.white70,
                   fontSize: 10,

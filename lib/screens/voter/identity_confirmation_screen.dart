@@ -125,6 +125,9 @@ class IdentityConfirmationScreen extends ConsumerWidget {
         final settings = ref.watch(electionSettingsProvider).value;
         if (settings == null) return const SizedBox();
         
+        String electionTitle = settings.electionTitle;
+        if (electionTitle.contains('UENR')) electionTitle = 'RavenVote';
+
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
@@ -133,7 +136,7 @@ class IdentityConfirmationScreen extends ConsumerWidget {
             border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
           ),
           child: Text(
-            settings.electionTitle.toUpperCase(),
+            electionTitle.toUpperCase(),
             style: GoogleFonts.inter(
               color: theme.colorScheme.primary,
               fontSize: 10,

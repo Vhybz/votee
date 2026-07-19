@@ -564,6 +564,25 @@ class _VotingScreenState extends ConsumerState<VotingScreen> {
     final student = ref.read(voterProvider);
     if (student == null) return;
 
+    // Final Confirmation Dialog (Perfection UX)
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Final Ballot'),
+        content: const Text('Once cast, your vote cannot be changed. Are you sure you want to submit?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('REVIEW AGAIN')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            child: const Text('YES, SUBMIT'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     final List<Vote> votesToCast = [];
     _selections.forEach((posId, candIds) {
       for (var candId in candIds) {

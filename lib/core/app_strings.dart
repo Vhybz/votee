@@ -1,7 +1,7 @@
 class AppStrings {
   // Login Screen
   static const String loginTitle = 'RavenVote';
-  static const String loginSubtitle = 'UENR E-VOTING SYSTEM';
+  static const String loginSubtitle = 'by TechRaven LTD';
   static const String signInHeader = 'Administrator Login';
   static const String emailLabel = 'Admin Email';
   static const String passwordLabel = 'Password';

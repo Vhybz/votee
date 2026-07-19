@@ -28,6 +28,7 @@ CREATE TABLE public.users (
   email TEXT UNIQUE NOT NULL,
   role TEXT NOT NULL DEFAULT 'admin', -- superAdmin, admin, electionOfficial
   status TEXT NOT NULL DEFAULT 'pending', -- pending, approved, suspended
+  rank TEXT,
   photo_url TEXT,
   enabled_permissions TEXT[] DEFAULT '{"/admin"}',
   is_deleted BOOLEAN DEFAULT false,
@@ -102,7 +103,7 @@ CREATE TABLE public.blacklisted_ips (
 -- ELECTION SETTINGS
 CREATE TABLE public.settings (
   id TEXT PRIMARY KEY DEFAULT 'current_election',
-  election_title TEXT NOT NULL DEFAULT 'RavenVote - UENR E-Voting',
+  election_title TEXT NOT NULL DEFAULT 'RavenVote by TechRaven LTD',
   start_time TIMESTAMPTZ,
   end_time TIMESTAMPTZ,
   is_active BOOLEAN DEFAULT false,
@@ -112,7 +113,7 @@ CREATE TABLE public.settings (
 
 -- Initialize settings
 INSERT INTO public.settings (id, election_title) 
-VALUES ('current_election', 'RavenVote - UENR E-Voting')
+VALUES ('current_election', 'RavenVote by TechRaven LTD')
 ON CONFLICT (id) DO NOTHING;
 
 -- =====================================================
@@ -127,14 +128,15 @@ DECLARE
 BEGIN
   SELECT count(*) INTO user_count FROM public.users;
   
-  INSERT INTO public.users (id, first_name, surname, email, role, status)
+  INSERT INTO public.users (id, first_name, surname, email, role, status, rank)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'first_name', 'New'),
     COALESCE(NEW.raw_user_meta_data->>'surname', 'User'),
     NEW.email,
     CASE WHEN user_count = 0 THEN 'superAdmin' ELSE 'admin' END,
-    CASE WHEN user_count = 0 THEN 'approved' ELSE 'pending' END
+    CASE WHEN user_count = 0 THEN 'approved' ELSE 'pending' END,
+    NEW.raw_user_meta_data->>'rank'
   );
   RETURN NEW;
 END;
@@ -175,6 +177,49 @@ CREATE TRIGGER on_vote_cast
   AFTER INSERT ON public.votes
   FOR EACH ROW EXECUTE FUNCTION public.increment_vote_count();
 
+-- Function: Protect Root Admin
+CREATE OR REPLACE FUNCTION public.protect_root_admin()
+RETURNS TRIGGER AS $$
+DECLARE
+  root_id UUID;
+BEGIN
+  -- Find the oldest user ID
+  SELECT id INTO root_id FROM public.users ORDER BY created_at ASC LIMIT 1;
+  
+  -- If deleting the root user, abort
+  IF TG_OP = 'DELETE' AND OLD.id = root_id THEN
+    RAISE EXCEPTION 'The Root SuperAdmin (Founder) cannot be deleted.';
+  END IF;
+  
+  -- If updating the role of the root user to anything else, abort
+  IF TG_OP = 'UPDATE' AND OLD.id = root_id AND NEW.role != 'superAdmin' THEN
+    RAISE EXCEPTION 'The Root SuperAdmin (Founder) must remain a superAdmin.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger for root protection
+CREATE TRIGGER on_user_modify_protect
+  BEFORE UPDATE OR DELETE ON public.users
+  FOR EACH ROW EXECUTE FUNCTION public.protect_root_admin();
+
+-- =====================================================
+-- 3.5 PRODUCTION CONSTRAINTS (Crucial for Security)
+-- =====================================================
+
+-- Prevent duplicate voting at the database level (The ultimate safety valve)
+ALTER TABLE public.votes 
+DROP CONSTRAINT IF EXISTS unique_student_pos_vote;
+
+ALTER TABLE public.votes 
+ADD CONSTRAINT unique_student_pos_vote UNIQUE (student_id, position_id);
+
+-- Ensure phone numbers are stored consistently
+ALTER TABLE public.students
+ADD CONSTRAINT phone_format CHECK (phone_number ~ '^[0-9]+$');
+
 -- =====================================================
 -- 4. PERFORMANCE INDEXES
 -- =====================================================
@@ -189,8 +234,8 @@ CREATE INDEX idx_votes_candidate ON public.votes(candidate_id);
 
 -- Note: Use Dashboard to ensure lowercase bucket IDs.
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('avatars', 'avatars', true), ('candidates', 'candidates', true)
-ON CONFLICT (id) DO UPDATE SET public = true;
+VALUES ('avatars', 'avatars', true), ('candidates', 'candidates', true), ('backups', 'backups', false)
+ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
 
 -- Enable public access (View)
 DROP POLICY IF EXISTS "Public Access" ON storage.objects;
@@ -202,6 +247,13 @@ CREATE POLICY "Admin CRUD" ON storage.objects
 FOR ALL 
 USING (auth.role() = 'authenticated') 
 WITH CHECK (auth.role() = 'authenticated');
+
+-- Explicit Private Access for Backups
+DROP POLICY IF EXISTS "Backups Private" ON storage.objects;
+CREATE POLICY "Backups Private" ON storage.objects 
+FOR ALL 
+TO service_role 
+USING (bucket_id = 'backups');
 
 -- =====================================================
 -- 6. SECURITY & REALTIME

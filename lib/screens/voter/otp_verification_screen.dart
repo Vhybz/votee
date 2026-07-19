@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants.dart';
 import '../../models/election_models.dart';
 import '../../services/voter_provider.dart';
+import '../../services/sms_service.dart';
 
 class OtpVerificationScreen extends ConsumerStatefulWidget {
   final Student student;
@@ -18,6 +19,18 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
   final List<TextEditingController> _controllers = List.generate(5, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(5, (_) => FocusNode());
   bool _isVerifying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sendOtp();
+  }
+
+  void _sendOtp() {
+    if (widget.student.phoneNumber.isNotEmpty) {
+      SmsService.sendOtp(widget.student.phoneNumber, widget.student.otp);
+    }
+  }
 
   @override
   void dispose() {
@@ -279,7 +292,12 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
 
   Widget _buildResendOption(bool isDark, ThemeData theme) {
     return TextButton(
-      onPressed: () {},
+      onPressed: () {
+        _sendOtp();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Verification code resent successfully.')),
+        );
+      },
       child: RichText(
         text: TextSpan(
           text: "Didn't receive the code? ",

@@ -97,7 +97,7 @@ class AppSidebar extends ConsumerWidget {
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 1),
             ),
             const Text(
-              'ADMIN PANEL',
+              'by TechRaven LTD',
               style: TextStyle(color: Colors.white38, fontWeight: FontWeight.w600, fontSize: 10, letterSpacing: 2),
             ),
           ] else

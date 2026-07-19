@@ -249,7 +249,7 @@ class ElectionSettings {
   factory ElectionSettings.fromJson(Map<String, dynamic> json) {
     return ElectionSettings(
       id: json['id']?.toString() ?? '',
-      electionTitle: json['election_title']?.toString() ?? 'RavenVote - UENR E-Voting',
+      electionTitle: json['election_title']?.toString() ?? 'RavenVote by TechRaven LTD',
       startTime: json['start_time'] != null ? DateTime.parse(json['start_time'].toString()) : null,
       endTime: json['end_time'] != null ? DateTime.parse(json['end_time'].toString()) : null,
       isActive: json['is_active'] == true,

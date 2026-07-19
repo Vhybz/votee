@@ -107,7 +107,7 @@ class InitializationErrorScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: const Color(0xFF003366), // UENR Blue
+        color: const Color(0xFF003366), // Primary Blue
         width: double.infinity,
         padding: const EdgeInsets.all(24),
         child: Center(
@@ -237,7 +237,7 @@ class RavenVoteApp extends ConsumerWidget {
 
     // System UI logic is now handled in builder to respond to theme changes
     return MaterialApp(
-      title: 'RavenVote - UENR E-Voting',
+      title: 'RavenVote by TechRaven LTD',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getLightTheme(themeState.primaryColor),
       darkTheme: AppTheme.getDarkTheme(themeState.primaryColor),

@@ -108,6 +108,13 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
   }
 
   Widget _buildUserList(List<UserAccount> users) {
+    final theme = Theme.of(context);
+    // Identify the "Root SuperAdmin" (The oldest account)
+    UserAccount? rootAdmin;
+    if (users.isNotEmpty) {
+      rootAdmin = users.reduce((a, b) => a.createdAt.isBefore(b.createdAt) ? a : b);
+    }
+
     return Card(
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       child: ListView.separated(
@@ -115,29 +122,64 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
         separatorBuilder: (context, index) => const Divider(height: 1),
         itemBuilder: (context, index) {
           final user = users[index];
+          final isRoot = rootAdmin?.id == user.id;
+
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  backgroundColor: user.status == AccountStatus.approved ? Colors.green.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
-                  backgroundImage: (user.photoUrl != null && user.photoUrl!.isNotEmpty)
-                      ? NetworkImage(user.photoUrl!)
-                      : null,
-                  child: (user.photoUrl == null || user.photoUrl!.isEmpty)
-                      ? Icon(
-                          user.role == UserRole.superAdmin ? Icons.shield : Icons.person,
-                          color: user.status == AccountStatus.approved ? Colors.green : Colors.orange,
-                        )
-                      : null,
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: user.status == AccountStatus.approved ? Colors.green.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
+                      backgroundImage: (user.photoUrl != null && user.photoUrl!.isNotEmpty)
+                          ? NetworkImage(user.photoUrl!)
+                          : null,
+                      child: (user.photoUrl == null || user.photoUrl!.isEmpty)
+                          ? Icon(
+                              user.role == UserRole.superAdmin ? Icons.shield : Icons.person,
+                              color: user.status == AccountStatus.approved ? Colors.green : Colors.orange,
+                            )
+                          : null,
+                    ),
+                    if (isRoot)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(color: Colors.amber, shape: BoxShape.circle),
+                          child: const Icon(Icons.star, size: 10, color: Colors.white),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      Row(
+                        children: [
+                          Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          if (user.rank != null && user.rank!.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '(${user.rank})',
+                              style: TextStyle(fontSize: 10, color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                          if (isRoot) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                              child: const Text('FOUNDER', style: TextStyle(color: Colors.amber, fontSize: 8, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ],
+                      ),
                       Text(
                         '${user.email} • ${user.role.name.toUpperCase()}',
                         style: const TextStyle(fontSize: 11, color: Colors.grey),
@@ -148,7 +190,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                _buildActions(user),
+                _buildActions(user, isRoot),
               ],
             ),
           );
@@ -157,19 +199,22 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     );
   }
 
-  Widget _buildActions(UserAccount user) {
-    if (user.status == AccountStatus.pending) {
+  Widget _buildActions(UserAccount targetUser, bool isRoot) {
+    final currentUser = ref.watch(currentUserProvider);
+    final isSuperAdmin = currentUser?.role == UserRole.superAdmin;
+
+    if (targetUser.status == AccountStatus.pending) {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           ElevatedButton(
-            onPressed: () => _handleApproval(user, AccountStatus.approved),
+            onPressed: () => _handleApproval(targetUser, AccountStatus.approved),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
             child: const Text('APPROVE'),
           ),
           const SizedBox(width: 8),
           OutlinedButton(
-            onPressed: () => _handleApproval(user, AccountStatus.suspended),
+            onPressed: () => _handleApproval(targetUser, AccountStatus.suspended),
             child: const Text('REJECT'),
           ),
         ],
@@ -182,25 +227,106 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: user.status == AccountStatus.approved ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+            color: targetUser.status == AccountStatus.approved ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
             borderRadius: BorderRadius.zero,
           ),
           child: Text(
-            user.status.name.toUpperCase(),
+            targetUser.status.name.toUpperCase(),
             style: TextStyle(
-              color: user.status == AccountStatus.approved ? Colors.green : Colors.red,
+              color: targetUser.status == AccountStatus.approved ? Colors.green : Colors.red,
               fontWeight: FontWeight.bold,
               fontSize: 10,
             ),
           ),
         ),
+        // Role change only for Super Admins, and can't change Root Admin role
+        if (isSuperAdmin && targetUser.id != currentUser?.id && !isRoot) ...[
+          const SizedBox(width: 8),
+          PopupMenuButton<UserRole>(
+            onSelected: (newRole) => _handleRoleChange(targetUser, newRole),
+            itemBuilder: (context) => UserRole.values.map((role) {
+              return PopupMenuItem(
+                value: role,
+                child: Text('Set as ${role.name.toUpperCase()}'),
+              );
+            }).toList(),
+            icon: const Icon(Icons.shield_outlined, size: 20),
+            tooltip: 'Change Role',
+          ),
+        ],
         const SizedBox(width: 8),
-        IconButton(
-          icon: const Icon(Icons.edit_outlined),
-          onPressed: () {},
-        ),
+        // Only Super Admins can delete, and can't delete Root Admin
+        if (isSuperAdmin && targetUser.id != currentUser?.id && !isRoot)
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+            onPressed: () => _handleDeleteUser(targetUser),
+            tooltip: 'Remove Staff',
+          )
+        else
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () {},
+          ),
       ],
     );
+  }
+
+  Future<void> _handleDeleteUser(UserAccount user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Staff Member'),
+        content: Text('Are you sure you want to remove ${user.name} from the system? This will revoke all access immediately.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('REMOVE'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await ref.read(userServiceProvider).deleteUser(user.id);
+      // userProvider (StateNotifier) automatically handles the state update if implemented
+      // or we can refresh manually
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${user.name} removed.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleRoleChange(UserAccount user, UserRole newRole) async {
+    if (user.role == newRole) return;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Role Change'),
+        content: Text('Change ${user.name}\'s role to ${newRole.name.toUpperCase()}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('CONFIRM'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final updatedUser = user.copyWith(role: newRole);
+      await ref.read(userServiceProvider).updateUser(updatedUser);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${user.name} is now an ${newRole.name.toUpperCase()}')),
+        );
+      }
+    }
   }
 
   Future<void> _handleApproval(UserAccount user, AccountStatus newStatus) async {

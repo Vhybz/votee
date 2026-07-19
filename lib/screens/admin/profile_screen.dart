@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:typed_data';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/admin_appbar.dart';
 import '../../services/menu_service.dart';
@@ -203,6 +202,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               controller: _surnameController,
               label: 'Surname',
               icon: Icons.person_outline,
+            ),
+            const SizedBox(height: 24),
+            // Rank is disabled
+            TextField(
+              enabled: false,
+              controller: TextEditingController(text: user.rank ?? 'Staff'),
+              decoration: const InputDecoration(
+                labelText: 'Professional Rank',
+                prefixIcon: Icon(Icons.workspace_premium_rounded),
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 24),
             // Email is disabled

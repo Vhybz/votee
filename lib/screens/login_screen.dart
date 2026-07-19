@@ -122,7 +122,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
           children: [
             Icon(
               isError ? Icons.error_outline : (isWarning ? Icons.warning_amber_rounded : Icons.info_outline),
-              color: isError ? Colors.red : (isWarning ? Colors.orange : AppColors.uenrBlue),
+              color: isError ? Colors.red : (isWarning ? Colors.orange : AppColors.primaryBlue),
             ),
             const SizedBox(width: 12),
             Expanded(

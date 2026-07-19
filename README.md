@@ -1,6 +1,6 @@
 # RavenVote
 
-Secure, Transparent, and Live E-Voting System for UENR.
+Secure, Transparent, and Live Voting System.
 
 ## Getting Started
 

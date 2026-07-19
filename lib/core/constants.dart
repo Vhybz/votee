@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // UENR Official Palette applied to Original Style
-  static const Color uenrBlue = Color(0xFF003366);
-  static const Color uenrGreen = Color(0xFF006633);
-  static const Color uenrYellow = Color(0xFFCC9900);
-  static const Color uenrBrown = Color(0xFF663300);
+  // Official Palette
+  static const Color primaryBlue = Color(0xFF003366);
+  static const Color primaryGreen = Color(0xFF006633);
+  static const Color primaryYellow = Color(0xFFCC9900);
+  static const Color primaryBrown = Color(0xFF663300);
   
   static const Color primaryColor = Colors.black;
   static const Color surfaceWhite = Color(0xFFECEFF1);

@@ -97,7 +97,7 @@ class ElectionService {
     // 3. Reset election settings
     await updateSettings(ElectionSettings(
       id: 'current_election',
-      electionTitle: 'RavenVote - UENR E-Voting',
+      electionTitle: 'RavenVote by TechRaven LTD',
       isActive: false,
       startTime: null,
       endTime: null,
@@ -114,6 +114,24 @@ class ElectionService {
 
   Future<void> deleteStudent(String id) async {
     await _client.from('students').delete().eq('id', id);
+  }
+
+  Future<void> reportAnomaly({
+    required String title,
+    required String details,
+    required AnomalySeverity severity,
+    String? ipAddress,
+  }) async {
+    try {
+      await _client.from('anomalies').insert({
+        'title': title,
+        'details': details,
+        'severity': severity.name,
+        'ip_address': ipAddress,
+      });
+    } catch (e) {
+      debugPrint('Failed to report anomaly: $e');
+    }
   }
 
   Future<String?> uploadCandidateImage(String candidateId, Uint8List bytes, {String ext = 'jpg'}) async {
@@ -169,7 +187,7 @@ class ElectionService {
         .maybeSingle();
     
     if (response == null) {
-      return ElectionSettings(id: 'current_election', electionTitle: 'RavenVote - UENR E-Voting');
+      return ElectionSettings(id: 'current_election', electionTitle: 'RavenVote by TechRaven LTD');
     }
     return ElectionSettings.fromJson(response);
   }
@@ -205,7 +223,7 @@ class ElectionService {
         .order('id')
         .map((data) {
           if (data.isEmpty) {
-            return ElectionSettings(id: 'current_election', electionTitle: 'RavenVote - UENR E-Voting');
+            return ElectionSettings(id: 'current_election', electionTitle: 'RavenVote by TechRaven LTD');
           }
           // Try to find the active one in the stream data
           final active = data.where((json) => json['is_active'] == true).firstOrNull;

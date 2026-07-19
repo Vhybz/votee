@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/election_models.dart';
 import 'election_service.dart';
 import 'election_provider.dart';
+import 'sms_service.dart';
 
 final voterProvider = StateNotifierProvider<VoterNotifier, Student?>((ref) {
   return VoterNotifier(ref.watch(electionServiceProvider));
@@ -33,15 +34,12 @@ class VoterNotifier extends StateNotifier<Student?> {
     if (state == null) return false;
     try {
       // 1. Submit the votes
+      // The database trigger 'on_vote_cast' handles the status update atomically.
       await _service.castVotes(votes);
       
-      // 2. Mark student as voted (Resilient check)
-      try {
-        await _service.markStudentAsVoted(state!.id);
-      } catch (e) {
-        // If this fails, it might be due to RLS or the trigger already handled it.
-        // We log it but don't fail the user experience if castVotes succeeded.
-        debugPrint('Post-vote status update handled by system or failed: $e');
+      // 2. Send SMS confirmation (Fire and forget)
+      if (state != null && state!.phoneNumber.isNotEmpty) {
+        SmsService.sendVoteConfirmation(state!.phoneNumber, state!.fullName);
       }
       
       logout();

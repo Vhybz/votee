@@ -9,6 +9,7 @@ import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
 import '../../services/election_provider.dart';
 import '../../models/election_models.dart';
+import '../../models/user_model.dart';
 
 final allElectionsProvider = FutureProvider<List<ElectionSettings>>((ref) async {
   return ref.watch(electionServiceProvider).getAllElections();
@@ -22,6 +23,25 @@ class ElectionManagementScreen extends ConsumerStatefulWidget {
 }
 
 class _ElectionManagementScreenState extends ConsumerState<ElectionManagementScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -67,10 +87,18 @@ class _ElectionManagementScreenState extends ConsumerState<ElectionManagementScr
                     children: [
                       _buildHeader(),
                       const SizedBox(height: 32),
+                      _buildSearchBar(theme),
+                      const SizedBox(height: 16),
                       Skeletonizer(
                         enabled: electionsAsync.isLoading,
                         child: electionsAsync.when(
-                          data: (elections) => _buildElectionsList(elections),
+                          data: (elections) {
+                            var filteredElections = elections;
+                            if (_searchQuery.isNotEmpty) {
+                              filteredElections = elections.where((e) => e.electionTitle.toLowerCase().contains(_searchQuery)).toList();
+                            }
+                            return _buildElectionsList(filteredElections);
+                          },
                           loading: () => _buildElectionsList(_fakeElections),
                           error: (e, s) => Center(child: Text('Error: $e')),
                         ),
@@ -102,6 +130,31 @@ class _ElectionManagementScreenState extends ConsumerState<ElectionManagementScr
       endTime: DateTime.now().add(const Duration(days: 3)),
     ),
   ];
+
+  Widget _buildSearchBar(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+        borderRadius: BorderRadius.zero,
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: TextField(
+        controller: _searchController,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black),
+        decoration: InputDecoration(
+          hintText: 'Search by election title...',
+          hintStyle: TextStyle(color: isDark ? Colors.white24 : Colors.grey, fontSize: 14),
+          prefixIcon: Icon(Icons.search_rounded, color: isDark ? Colors.white38 : Colors.grey, size: 22),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          filled: false,
+        ),
+      ),
+    );
+  }
 
   Widget _buildHeader() {
     return Wrap(
@@ -161,6 +214,8 @@ class _ElectionManagementScreenState extends ConsumerState<ElectionManagementScr
 
   Widget _buildElectionCard(ElectionSettings election) {
     final dateFormat = DateFormat('MMM dd, yyyy • hh:mm a');
+    final user = ref.watch(currentUserProvider);
+    final isSuperAdmin = user?.role == UserRole.superAdmin;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -215,11 +270,12 @@ class _ElectionManagementScreenState extends ConsumerState<ElectionManagementScr
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      onPressed: () => _handleDeleteElection(election),
-                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
-                      tooltip: 'Delete Session',
-                    ),
+                    if (isSuperAdmin)
+                      IconButton(
+                        onPressed: () => _handleDeleteElection(election),
+                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                        tooltip: 'Delete Session',
+                      ),
                     const SizedBox(width: 8),
                     OutlinedButton(
                       onPressed: () => _showElectionDetailsDialog(election),

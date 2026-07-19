@@ -6,7 +6,6 @@ import 'package:skeletonizer/skeletonizer.dart';
 import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
-import 'dart:typed_data';
 import '../../core/constants.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/admin_appbar.dart';
@@ -49,6 +48,108 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
     super.dispose();
   }
 
+  Future<void> _handleBulkImport(Map<String, String> contextData) async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx', 'xls'],
+      withData: true,
+    );
+
+    if (result != null) {
+      setState(() => _isImporting = true);
+      try {
+        final files = result.files;
+        if (files.isEmpty) throw 'No file selected.';
+        
+        final file = files.first;
+        Uint8List? bytes = file.bytes;
+        
+        if (bytes == null && file.path != null) {
+          bytes = File(file.path!).readAsBytesSync();
+        }
+
+        if (bytes == null || bytes.isEmpty) {
+          throw 'Could not read file data. The file might be empty or inaccessible.';
+        }
+
+        var excel = Excel.decodeBytes(bytes);
+        List<Map<String, dynamic>> studentsToImport = [];
+        
+        for (var table in excel.tables.keys) {
+          var sheet = excel.tables[table];
+          if (sheet == null) continue;
+          
+          var rows = sheet.rows;
+          if (rows.isEmpty) continue;
+          
+          // Start from index 1 to skip header row
+          for (int i = 1; i < rows.length; i++) {
+            var row = rows[i];
+            if (row.isEmpty) continue;
+            
+            // Extremely safe cell access
+            String getVal(int idx) {
+              if (idx >= row.length) return '';
+              final cell = row[idx];
+              if (cell == null || cell.value == null) return '';
+              return cell.value.toString().trim();
+            }
+
+            final fullName = getVal(0);
+            final indexNumber = getVal(1);
+            // Column D is index 3 in the user's spreadsheet
+            final phoneNumber = getVal(3).isEmpty ? getVal(2) : getVal(3);
+            
+            if (indexNumber.isEmpty) continue;
+            
+            const otp = '12345'; 
+
+            studentsToImport.add({
+              'id': UuidUtils.generate(),
+              'full_name': fullName.isEmpty ? 'Unknown Student' : fullName,
+              'index_number': indexNumber,
+              'level': contextData['level'] ?? '100',
+              'class_name': contextData['class'] ?? 'A',
+              'phone_number': phoneNumber,
+              'otp': otp,
+              'academic_school': contextData['school'] ?? 'General',
+              'program': contextData['program'] ?? 'General',
+              'has_voted': false,
+            });
+          }
+        }
+
+        if (studentsToImport.isNotEmpty) {
+          await ref.read(electionServiceProvider).bulkImportStudents(studentsToImport);
+          ref.invalidate(votersListProvider);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Imported ${studentsToImport.length} voters successfully'),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw 'No valid student records found in the Excel file.';
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Import Failed: $e'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            )
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isImporting = false);
+      }
+    }
+  }
+
   Future<void> _showImportSettingsDialog() async {
     String? selectedSchool = _schools.first;
     String? selectedProgram = _programs.first;
@@ -77,10 +178,10 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, {
-                'school': selectedSchool!,
-                'program': selectedProgram!,
-                'level': selectedLevel!,
-                'class': selectedClass!,
+                'school': selectedSchool ?? _schools.first,
+                'program': selectedProgram ?? _programs.first,
+                'level': selectedLevel ?? _levels.first,
+                'class': selectedClass ?? _classes.first,
               }),
               style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               child: const Text('PICK EXCEL FILE'),
@@ -111,86 +212,6 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
         onChanged: onChanged,
       ),
     );
-  }
-
-  Future<void> _handleBulkImport(Map<String, String> contextData) async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx', 'xls'],
-      withData: true, // Cross-platform safety
-    );
-
-    if (result != null) {
-      setState(() => _isImporting = true);
-      try {
-        final file = result.files.single;
-        Uint8List? bytes = file.bytes;
-        
-        // On mobile/desktop, we can try reading from path if bytes are null
-        if (bytes == null && file.path != null) {
-          bytes = File(file.path!).readAsBytesSync();
-        }
-
-        if (bytes == null) {
-          throw 'Could not read file data. Please try again.';
-        }
-
-        var excel = Excel.decodeBytes(bytes);
-        
-        List<Map<String, dynamic>> studentsToImport = [];
-        
-        for (var table in excel.tables.keys) {
-          var rows = excel.tables[table]?.rows ?? [];
-          if (rows.isEmpty) continue;
-          
-          for (int i = 1; i < rows.length; i++) {
-            var row = rows[i];
-            if (row.isEmpty) continue;
-            
-            // Safe access for Excel 4.x
-            final fullName = row.isNotEmpty ? row[0]?.value?.toString() ?? '' : '';
-            final indexNumber = row.length > 1 ? row[1]?.value?.toString() ?? '' : '';
-            final phoneNumber = row.length > 2 ? row[2]?.value?.toString() ?? '' : '';
-            
-            if (indexNumber.isEmpty) continue;
-            
-            const otp = '12345'; 
-
-            studentsToImport.add({
-              'id': UuidUtils.generate(),
-              'full_name': fullName,
-              'index_number': indexNumber,
-              'level': contextData['level'],
-              'class_name': contextData['class'],
-              'phone_number': phoneNumber,
-              'otp': otp,
-              'academic_school': contextData['school'],
-              'program': contextData['program'],
-              'has_voted': false,
-            });
-          }
-        }
-
-        if (studentsToImport.isNotEmpty) {
-          await ref.read(electionServiceProvider).bulkImportStudents(studentsToImport);
-          ref.invalidate(votersListProvider);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Imported ${studentsToImport.length} voters successfully'),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-        }
-      } finally {
-        if (mounted) setState(() => _isImporting = false);
-      }
-    }
   }
 
   Future<void> _showManualRegistrationDialog() async {

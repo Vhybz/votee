@@ -20,7 +20,7 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
         primary: primaryColor,
-        secondary: AppColors.uenrGreen,
+        secondary: AppColors.primaryGreen,
         surface: const Color(0xFFF5F5F5),
         onSurface: AppColors.textDark,
         brightness: Brightness.light,

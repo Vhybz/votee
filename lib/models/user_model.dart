@@ -8,6 +8,7 @@ class UserAccount {
   final String email;
   final UserRole role;
   final AccountStatus status;
+  final String? rank;
   final DateTime createdAt;
   final String? photoUrl;
   final bool isDeleted;
@@ -21,6 +22,7 @@ class UserAccount {
     required this.email,
     required this.role,
     this.status = AccountStatus.pending,
+    this.rank,
     DateTime? createdAt,
     this.photoUrl,
     this.isDeleted = false,
@@ -55,6 +57,7 @@ class UserAccount {
       email: json['email']?.toString() ?? '',
       role: safeRole(json['role']?.toString()),
       status: safeStatus(json['status']?.toString()),
+      rank: json['rank']?.toString(),
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
       photoUrl: json['photo_url']?.toString(),
       isDeleted: json['is_deleted'] == true,
@@ -71,6 +74,7 @@ class UserAccount {
       'email': email,
       'role': role.name,
       'status': status.name,
+      'rank': rank,
       'created_at': createdAt.toIso8601String(),
       'photo_url': photoUrl,
       'is_deleted': isDeleted,
@@ -87,6 +91,7 @@ class UserAccount {
     String? email,
     UserRole? role,
     AccountStatus? status,
+    String? rank,
     bool? isDeleted,
     DateTime? lastSeen,
     Set<String>? enabledPermissions,
@@ -99,6 +104,7 @@ class UserAccount {
       email: email ?? this.email,
       role: role ?? this.role,
       status: status ?? this.status,
+      rank: rank ?? this.rank,
       createdAt: createdAt,
       photoUrl: photoUrl ?? this.photoUrl,
       isDeleted: isDeleted ?? this.isDeleted,

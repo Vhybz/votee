@@ -12,14 +12,15 @@ class AuthService {
     );
   }
 
-  /// Registers a new user with metadata (first_name, surname).
-  Future<AuthResponse> signUp(String email, String password, {required String firstName, required String surname}) async {
+  /// Registers a new user with metadata (first_name, surname, rank).
+  Future<AuthResponse> signUp(String email, String password, {required String firstName, required String surname, required String rank}) async {
     return await _client.auth.signUp(
       email: email,
       password: password,
       data: {
         'first_name': firstName,
         'surname': surname,
+        'rank': rank,
       },
     );
   }

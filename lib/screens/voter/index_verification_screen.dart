@@ -28,6 +28,9 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
   bool _isCheckingIp = true;
   Timer? _countdownTimer;
   Duration _timeUntilStart = Duration.zero;
+  String? _currentIp;
+  static final Set<String> _uniqueIdsVerified = {};
+  final Map<String, Color> _positionColors = {};
 
   @override
   void initState() {
@@ -52,6 +55,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     try {
       final ipService = IpService();
       final ip = await ipService.getCurrentIp();
+      _currentIp = ip;
       if (ip != null) {
         final isBlacklisted = await ipService.isIpBlacklisted(ip);
         if (mounted) {
@@ -95,6 +99,44 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     super.dispose();
   }
 
+  void _handleVerification(String index) async {
+    if (index.isEmpty) return;
+
+    final student = await ref.read(voterProvider.notifier).verifyIndex(index);
+    if (student != null) {
+      // Security Logic: Check for credential stuffing
+      _uniqueIdsVerified.add(index);
+      if (_uniqueIdsVerified.length > 3) {
+        ref.read(electionServiceProvider).reportAnomaly(
+          title: 'Possible Credential Stuffing',
+          details: 'Device at $_currentIp has attempted to verify ${_uniqueIdsVerified.length} unique index numbers. Latest: $index',
+          severity: AnomalySeverity.high,
+          ipAddress: _currentIp,
+        );
+      }
+
+      if (student.hasVoted) {
+        if (mounted) {
+          _showAlreadyVotedDialog(student);
+        }
+        return;
+      }
+      if (mounted) {
+        Navigator.pushNamed(
+          context, 
+          '/voter/confirm',
+          arguments: {'student': student},
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Index number not found.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -107,106 +149,257 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     
     final isElectionActive = settingsAsync.value?.isActive ?? false;
 
+    // Build the list of floating items
+    final List<Map<String, dynamic>> floatingItems = [];
+    
+    // Group candidates by position for connecting threads
+    final Map<String, List<int>> candidateGroups = {};
+
+    if (candidates.isNotEmpty) {
+      for (var i = 0; i < candidates.length; i++) {
+        final c = candidates[i];
+        final posId = c.positionId;
+        
+        // Ensure consistent color for each position
+        _positionColors.putIfAbsent(posId, () => Colors.primaries[math.Random(posId.hashCode).nextInt(Colors.primaries.length)]);
+        
+        candidateGroups.putIfAbsent(posId, () => []);
+        candidateGroups[posId]!.add(floatingItems.length);
+        
+        floatingItems.add({'candidate': c, 'isBgi': false});
+      }
+    }
+    
+    // Add background visuals
+    final bgiCount = size.width < 600 ? 10 : 20;
+    final List<String> backgroundImages = [
+      'assets/images/bgi/img.png',
+      'assets/images/bgi/img_1.png',
+      'assets/images/bgi/vote1.jpg',
+    ];
+    
+    for (int i = 0; i < bgiCount; i++) {
+      floatingItems.add({
+        'path': backgroundImages[i % backgroundImages.length],
+        'isBgi': true
+      });
+    }
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: Stack(
-        children: [
-          // Floating Avatars (Reduced count on mobile for cleaner background)
-          ...List.generate(
-            (isElectionActive && candidates.isNotEmpty) 
-                ? candidates.length 
-                : (size.width < 600 ? 10 : 20),
-            (index) {
-              // Ensure we don't exceed position list if using dummy items
-              final dummyIndex = index % _avatarPositions.length;
-              return _buildFloatingAvatar(
-                dummyIndex, 
-                size, 
-                (isElectionActive && candidates.isNotEmpty) ? candidates[index % candidates.length] : null,
-                positions,
-              );
-            }
-          ),
+      body: AnimatedBuilder(
+        animation: _avatarController,
+        builder: (context, _) {
+          final isElectionActive = settingsAsync.value?.isActive ?? false;
 
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Top spacing to "bring it down a bit"
-                    const SizedBox(height: 60), 
-                    if (_isCheckingIp)
-                      const Center(child: Padding(
-                        padding: EdgeInsets.all(100.0),
-                        child: CircularProgressIndicator(),
-                      ))
-                    else if (_isBlacklisted)
-                      _buildClosedBanner('ACCESS DENIED', 'Your device IP address has been restricted from participating in this election due to security policy violations.')
-                    else
-                    settingsAsync.when(
-                      data: (settings) {
-                        final now = DateTime.now();
-                        final isScheduledButNotStarted = settings.startTime != null && now.isBefore(settings.startTime!);
-                        final isEnded = settings.endTime != null && now.isAfter(settings.endTime!);
-                        
-                        if (!settings.isActive || isScheduledButNotStarted || isEnded) {
-                          String title = 'VOTING DISABLED';
-                          String message = 'The election is currently not active. Please check back later or contact your administrator.';
-                          Widget? extra;
+          // Calculate all positions for this frame
+          final List<Offset> currentOffsets = [];
+          for (int i = 0; i < floatingItems.length; i++) {
+            currentOffsets.add(_calculateAvatarOffset(i, size));
+          }
 
-                          if (isScheduledButNotStarted) {
-                            title = 'POLLS NOT OPEN';
-                            message = 'Voting is scheduled to start on ${DateFormat('MMMM dd, yyyy • hh:mm a').format(settings.startTime!)}';
-                            extra = _buildCountdownDisplay();
-                          } else if (isEnded) {
-                            title = 'POLLS CLOSED';
-                            message = 'The voting period for this election has ended.';
-                            extra = _buildResultsSummary(positions, candidates);
-                          }
+          return Stack(
+            children: [
+              // 1. Connecting threads (Dashed lines) for candidate groups
+              if (isElectionActive)
+                CustomPaint(
+                  size: size,
+                  painter: _ConnectionPainter(
+                    groups: candidateGroups,
+                    offsets: currentOffsets,
+                    colors: _positionColors,
+                    candidates: candidates,
+                  ),
+                ),
 
-                          return _buildClosedBanner(title, message, extra: extra);
-                        }
+              // 2. The Avatars themselves
+              ...List.generate(
+                floatingItems.length,
+                (index) {
+                  final item = floatingItems[index];
+                  final offset = currentOffsets[index];
+                  final candidate = item['isBgi'] ? null : item['candidate'] as Candidate;
+                  final Color? categoryColor = candidate != null ? _positionColors[candidate.positionId] : null;
 
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildHeader(),
-                            const SizedBox(height: 32),
-                            _buildVerificationForm(),
-                          ],
-                        );
-                      },
-                      loading: () => const Center(child: Padding(
-                        padding: EdgeInsets.all(100.0),
-                        child: CircularProgressIndicator(),
-                      )),
-                      error: (e, s) => Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildHeader(),
-                          const SizedBox(height: 32),
-                          _buildVerificationForm(),
-                        ],
-                      ),
+                  return Positioned(
+                    left: offset.dx,
+                    top: offset.dy,
+                    child: _buildAvatarWidget(
+                      size, 
+                      candidate, 
+                      positions, 
+                      item['isBgi'] ? item['path'] : null,
+                      categoryColor,
                     ),
-                    const SizedBox(height: 60), // Balanced bottom spacing
-                    _buildFooter(),
-                  ],
+                  );
+                }
+              ),
+
+              // 3. UI Layer (the forms, messages, etc)
+              SafeArea(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                      // Top spacing to "bring it down a bit"
+                      const SizedBox(height: 60), 
+                      if (_isCheckingIp)
+                        const Center(child: Padding(
+                          padding: EdgeInsets.all(100.0),
+                          child: CircularProgressIndicator(),
+                        ))
+                      else if (_isBlacklisted)
+                        _buildClosedBanner('ACCESS DENIED', 'Your device IP address has been restricted from participating in this election due to security policy violations.', 'RavenVote')
+                      else
+                        settingsAsync.when(
+                          data: (settings) {
+                            final now = DateTime.now();
+                            final isScheduledButNotStarted = settings.startTime != null && now.isBefore(settings.startTime!);
+                            final isEnded = settings.endTime != null && now.isAfter(settings.endTime!);
+                            
+                            String displayTitle = settings.electionTitle;
+                            if (displayTitle.contains('UENR')) displayTitle = 'RavenVote';
+
+                            if (!settings.isActive || isScheduledButNotStarted || isEnded) {
+                              String title = 'VOTING DISABLED';
+                              String message = 'The election is currently not active. Please check back later or contact your administrator.';
+                              Widget? extra;
+
+                              if (isScheduledButNotStarted) {
+                                title = 'POLLS NOT OPEN';
+                                message = 'Voting is scheduled to start on ${DateFormat('MMMM dd, yyyy • hh:mm a').format(settings.startTime!)}';
+                                extra = _buildCountdownDisplay();
+                              } else if (isEnded) {
+                                title = 'POLLS CLOSED';
+                                message = 'The voting period for this election has ended.';
+                                extra = _buildResultsSummary(positions, candidates);
+                              }
+
+                              return _buildClosedBanner(title, message, displayTitle, extra: extra);
+                            }
+
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildHeader(displayTitle),
+                                const SizedBox(height: 32),
+                                _buildVerificationForm(),
+                              ],
+                            );
+                          },
+                          loading: () => const Center(child: Padding(
+                            padding: EdgeInsets.all(100.0),
+                            child: CircularProgressIndicator(),
+                          )),
+                          error: (e, s) => Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildHeader('RavenVote'),
+                              const SizedBox(height: 32),
+                              _buildVerificationForm(),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 60), // Balanced bottom spacing
+                        _buildFooter(),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Offset _calculateAvatarOffset(int index, Size size) {
+    final double t = _avatarController.value;
+    final double phaseX = index * 0.7;
+    final double phaseY = index * 1.3;
+    final double speed = 1.0 + (index % 5) * 0.2;
+    
+    final double movementX = 0.3 * math.sin(2 * math.pi * t * speed + phaseX);
+    final double movementY = 0.3 * math.cos(2 * math.pi * t * speed + phaseY);
+    
+    double x = (_avatarPositions[index % _avatarPositions.length].dx + movementX) * size.width;
+    double y = (_avatarPositions[index % _avatarPositions.length].dy + movementY) * size.height;
+    
+    x = x % (size.width + 100) - 50;
+    y = y % (size.height + 100) - 50;
+    
+    return Offset(x, y);
+  }
+
+  Widget _buildAvatarWidget(Size size, Candidate? candidate, List<Position> positions, String? bgiPath, Color? categoryColor) {
     final theme = Theme.of(context);
-    final settingsAsync = ref.watch(electionSettingsProvider);
-    final electionTitle = settingsAsync.value?.electionTitle ?? 'RavenVote';
+    final position = candidate != null ? positions.firstWhere((p) => p.id == candidate.positionId, orElse: () => Position(id: '', title: '')) : null;
+    final String defaultBgi = bgiPath ?? 'assets/images/bgi/img.png';
+    final avatarSize = candidate != null ? (size.width < 600 ? 120.0 : 180.0) : (size.width < 600 ? 90.0 : 130.0);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: avatarSize,
+          height: avatarSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: categoryColor != null ? Border.all(color: categoryColor.withValues(alpha: 0.6), width: 2) : null,
+            boxShadow: candidate != null ? [
+              BoxShadow(
+                color: (categoryColor ?? Colors.black).withValues(alpha: 0.2),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ] : null,
+          ),
+          child: ClipOval(
+            child: candidate != null && candidate.imageUrl != null && candidate.imageUrl!.isNotEmpty
+                ? Image.network(
+                    candidate.imageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Image.asset(defaultBgi, fit: BoxFit.cover),
+                  )
+                : Image.asset(
+                    defaultBgi,
+                    fit: BoxFit.cover,
+                  ),
+          ),
+        ),
+        if (candidate != null && position != null && position.title.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: categoryColor ?? theme.colorScheme.primary,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 4,
+                ),
+              ],
+            ),
+            child: Text(
+              position.title,
+              style: const TextStyle(
+                fontSize: 9, 
+                fontWeight: FontWeight.bold, 
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildHeader(String title) {
+    final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
     final bool isMobile = size.width < 600;
     
@@ -244,7 +437,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
           ),
         ),
         Text(
-          electionTitle,
+          title,
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(
             color: theme.brightness == Brightness.dark ? Colors.white70 : AppColors.textLight,
@@ -253,11 +446,21 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
             letterSpacing: 1.2,
           ),
         ),
+        const SizedBox(height: 4),
+        Text(
+          'by TechRaven LTD',
+          style: GoogleFonts.inter(
+            color: theme.brightness == Brightness.dark ? Colors.white24 : Colors.grey.shade400,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildClosedBanner(String title, String message, {Widget? extra}) {
+  Widget _buildClosedBanner(String title, String message, String electionTitle, {Widget? extra}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final size = MediaQuery.of(context).size;
@@ -282,7 +485,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildElectionInfo(),
+            _buildElectionInfo(electionTitle),
             const SizedBox(height: 24),
             // Pulsing Lock Icon for "Live Security" feel
             TweenAnimationBuilder<double>(
@@ -339,9 +542,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     );
   }
 
-  Widget _buildElectionInfo() {
-    final settingsAsync = ref.watch(electionSettingsProvider);
-    final electionTitle = settingsAsync.value?.electionTitle ?? 'RavenVote';
+  Widget _buildElectionInfo(String title) {
     final theme = Theme.of(context);
 
     return Column(
@@ -358,7 +559,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
         ),
         const SizedBox(height: 12),
         Text(
-          electionTitle,
+          title,
           textAlign: TextAlign.center,
           style: GoogleFonts.plusJakartaSans(
             fontWeight: FontWeight.bold,
@@ -570,33 +771,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: () async {
-                        final index = _indexController.text.trim();
-                        if (index.isEmpty) return;
-
-                        final student = await ref.read(voterProvider.notifier).verifyIndex(index);
-                        if (student != null) {
-                          if (student.hasVoted) {
-                            if (mounted) {
-                              _showAlreadyVotedDialog(student);
-                            }
-                            return;
-                          }
-                          if (mounted) {
-                            Navigator.pushNamed(
-                              context, 
-                              '/voter/confirm',
-                              arguments: {'student': student},
-                            );
-                          }
-                        } else {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Index number not found.')),
-                            );
-                          }
-                        }
-                      },
+                      onPressed: () => _handleVerification(_indexController.text.trim()),
                       style: ElevatedButton.styleFrom(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
@@ -709,98 +884,80 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
               fontSize: 12,
             ),
           ),
+          const SizedBox(height: 16),
+          Text(
+            'Powered by TechRaven LTD',
+            style: TextStyle(
+              color: theme.brightness == Brightness.dark ? Colors.white10 : Colors.grey.withValues(alpha: 0.2),
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.0,
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildFloatingAvatar(int index, Size size, Candidate? candidate, List<Position> positions) {
-    final theme = Theme.of(context);
-    final position = candidate != null ? positions.firstWhere((p) => p.id == candidate.positionId, orElse: () => Position(id: '', title: '')) : null;
+class _ConnectionPainter extends CustomPainter {
+  final Map<String, List<int>> groups;
+  final List<Offset> offsets;
+  final Map<String, Color> colors;
+  final List<Candidate> candidates;
 
-    return AnimatedBuilder(
-      animation: _avatarController,
-      builder: (context, child) {
-        final double t = _avatarController.value;
-        // Each avatar has a unique phase and speed based on its index
-        final double phaseX = index * 0.7;
-        final double phaseY = index * 1.3;
-        final double speed = 1.0 + (index % 5) * 0.2;
-        
-        final double movementX = 0.3 * math.sin(2 * math.pi * t * speed + phaseX);
-        final double movementY = 0.3 * math.cos(2 * math.pi * t * speed + phaseY);
-        
-        double x = (_avatarPositions[index].dx + movementX) * size.width;
-        double y = (_avatarPositions[index].dy + movementY) * size.height;
-        
-        // Wrap around or bounce? Bouncing is smoother for drift
-        // Ensuring they don't just disappear but drift across most of the screen
-        x = x % (size.width + 100) - 50;
-        y = y % (size.height + 100) - 50;
+  _ConnectionPainter({
+    required this.groups,
+    required this.offsets,
+    required this.colors,
+    required this.candidates,
+  });
 
-        return Positioned(
-          left: x,
-          top: y,
-          child: Opacity(
-            opacity: 1.0, // Fully visible as requested
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: candidate != null ? (size.width < 600 ? 120 : 180) : (size.width < 600 ? 90 : 130),
-                  height: candidate != null ? (size.width < 600 ? 120 : 180) : (size.width < 600 ? 90 : 130),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: candidate != null ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ] : null, // Remove shadow when inactive for a flatter background feel
-                  ),
-                  child: ClipOval(
-                    child: candidate != null && candidate.imageUrl != null && candidate.imageUrl!.isNotEmpty
-                        ? Image.network(
-                            candidate.imageUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Image.asset('assets/images/bgi/img.png', fit: BoxFit.cover),
-                          )
-                        : Image.asset(
-                            'assets/images/bgi/img.png',
-                            fit: BoxFit.cover,
-                          ),
-                  ),
-                ),
-                if (candidate != null && position != null && position.title.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      position.title,
-                      style: const TextStyle(
-                        fontSize: 9, 
-                        fontWeight: FontWeight.bold, 
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bool isMobile = size.width < 600;
+    final double avatarRadius = isMobile ? 60.0 : 90.0;
+
+    for (var entry in groups.entries) {
+      final color = colors[entry.key] ?? Colors.white;
+      final paint = Paint()
+        ..color = color.withValues(alpha: 0.3)
+        ..strokeWidth = 1.5
+        ..style = PaintingStyle.stroke;
+
+      final indices = entry.value;
+      if (indices.length < 2) continue;
+
+      for (int i = 0; i < indices.length; i++) {
+        final p1 = offsets[indices[i]] + Offset(avatarRadius, avatarRadius);
+        final p2 = offsets[indices[(i + 1) % indices.length]] + Offset(avatarRadius, avatarRadius);
+
+        _drawDashedLine(canvas, p1, p2, paint);
+      }
+    }
   }
+
+  void _drawDashedLine(Canvas canvas, Offset p1, Offset p2, Paint paint) {
+    const double dashWidth = 10;
+    const double dashSpace = 10;
+    
+    double distance = (p2 - p1).distance;
+    if (distance == 0) return;
+    
+    double dx = (p2.dx - p1.dx) / distance;
+    double dy = (p2.dy - p1.dy) / distance;
+    
+    double currentDistance = 0;
+    while (currentDistance < distance) {
+      canvas.drawLine(
+        Offset(p1.dx + dx * currentDistance, p1.dy + dy * currentDistance),
+        Offset(p1.dx + dx * math.min(currentDistance + dashWidth, distance), p1.dy + dy * math.min(currentDistance + dashWidth, distance)),
+        paint,
+      );
+      currentDistance += dashWidth + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConnectionPainter oldDelegate) => true;
 }

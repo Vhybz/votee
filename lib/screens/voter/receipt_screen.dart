@@ -62,7 +62,7 @@ class ReceiptScreen extends StatelessWidget {
                 
                 const SizedBox(height: 32),
                 Text(
-                  'RAVENVOTE • UENR ELECTORAL COMMISSION',
+                  'RAVENVOTE BY TECHRAVEN LTD',
                   style: GoogleFonts.inter(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
@@ -131,7 +131,7 @@ class ReceiptScreen extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'UENR E-VOTING SYSTEM v1.0',
+                        'RAVENVOTE by TechRaven LTD v1.0',
                         style: GoogleFonts.inter(fontSize: 10, color: isDark ? Colors.white38 : AppColors.textLight, fontWeight: FontWeight.w600),
                       ),
                     ],

@@ -4,7 +4,7 @@ import '../models/election_models.dart';
 
 final electionServiceProvider = Provider((ref) => ElectionService());
 
-final electionTitleProvider = StateProvider<String>((ref) => 'UENR E-Voting System');
+final electionTitleProvider = StateProvider<String>((ref) => 'RavenVote by TechRaven LTD');
 
 final electionSettingsProvider = StreamProvider<ElectionSettings>((ref) {
   return ref.watch(electionServiceProvider).watchSettings();
