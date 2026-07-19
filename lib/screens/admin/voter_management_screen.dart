@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:excel/excel.dart';
+import 'package:skeletonizer/skeletonizer.dart';
+import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
-import 'dart:math' as math;
+import 'dart:typed_data';
 import '../../core/constants.dart';
 import '../../widgets/app_sidebar.dart';
+import '../../widgets/admin_appbar.dart';
 import '../../services/menu_service.dart';
+import '../../services/user_provider.dart';
 import '../../services/election_provider.dart';
 import '../../models/election_models.dart';
 import '../../core/uuid_utils.dart';
@@ -55,12 +59,14 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('Import Settings', style: GoogleFonts.oswald(fontWeight: FontWeight.bold)),
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          title: Text('Batch Configuration', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Select context for the Excel import. These will be applied to all voters in the file.'),
-              const SizedBox(height: 20),
+              const Text('Configure common attributes for the students in your Excel file.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+              const SizedBox(height: 24),
               _buildDropdownField('Academic School', selectedSchool, _schools, (v) => setDialogState(() => selectedSchool = v)),
               _buildDropdownField('Program', selectedProgram, _programs, (v) => setDialogState(() => selectedProgram = v)),
               _buildDropdownField('Level', selectedLevel, _levels, (v) => setDialogState(() => selectedLevel = v)),
@@ -76,7 +82,8 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
                 'level': selectedLevel!,
                 'class': selectedClass!,
               }),
-              child: const Text('SELECT EXCEL FILE'),
+              style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: const Text('PICK EXCEL FILE'),
             ),
           ],
         ),
@@ -93,8 +100,14 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<String>(
         initialValue: value,
-        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+        isExpanded: true,
+        isDense: true,
+        decoration: InputDecoration(
+          labelText: label, 
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        ),
+        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, overflow: TextOverflow.ellipsis))).toList(),
         onChanged: onChanged,
       ),
     );
@@ -104,12 +117,24 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx', 'xls'],
+      withData: true, // Cross-platform safety
     );
 
     if (result != null) {
       setState(() => _isImporting = true);
       try {
-        var bytes = File(result.files.single.path!).readAsBytesSync();
+        final file = result.files.single;
+        Uint8List? bytes = file.bytes;
+        
+        // On mobile/desktop, we can try reading from path if bytes are null
+        if (bytes == null && file.path != null) {
+          bytes = File(file.path!).readAsBytesSync();
+        }
+
+        if (bytes == null) {
+          throw 'Could not read file data. Please try again.';
+        }
+
         var excel = Excel.decodeBytes(bytes);
         
         List<Map<String, dynamic>> studentsToImport = [];
@@ -122,14 +147,14 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
             var row = rows[i];
             if (row.isEmpty) continue;
             
-            final fullName = row[0]?.value?.toString() ?? '';
-            final indexNumber = row[1]?.value?.toString() ?? '';
-            // If row has more columns, we could use them, but contextData overrides or provides defaults
+            // Safe access for Excel 4.x
+            final fullName = row.isNotEmpty ? row[0]?.value?.toString() ?? '' : '';
+            final indexNumber = row.length > 1 ? row[1]?.value?.toString() ?? '' : '';
             final phoneNumber = row.length > 2 ? row[2]?.value?.toString() ?? '' : '';
             
             if (indexNumber.isEmpty) continue;
             
-            final otp = (10000 + math.Random().nextInt(90000)).toString();
+            const otp = '12345'; 
 
             studentsToImport.add({
               'id': UuidUtils.generate(),
@@ -151,15 +176,16 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
           ref.invalidate(votersListProvider);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Successfully imported ${studentsToImport.length} voters into ${contextData['program']} Level ${contextData['level']}.')),
+              SnackBar(
+                content: Text('Imported ${studentsToImport.length} voters successfully'),
+                behavior: SnackBarBehavior.floating,
+              ),
             );
           }
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error importing voters: $e')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
         }
       } finally {
         if (mounted) setState(() => _isImporting = false);
@@ -180,17 +206,19 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('Manual Voter Registration', style: GoogleFonts.oswald(fontWeight: FontWeight.bold)),
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          title: Text('Voter Registration', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder())),
+                _buildFormTextField(nameController, 'Full Name', Icons.person_outline, [FilteringTextInputFormatter.deny(RegExp(r'[0-9]'))]),
                 const SizedBox(height: 16),
-                TextField(controller: indexController, decoration: const InputDecoration(labelText: 'Index Number', border: OutlineInputBorder())),
+                _buildFormTextField(indexController, 'Index Number', Icons.badge_outlined, [FilteringTextInputFormatter.deny(RegExp(r'\s'))]),
                 const SizedBox(height: 16),
-                TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'Phone Number', border: OutlineInputBorder())),
-                const SizedBox(height: 16),
+                _buildFormTextField(phoneController, 'Phone Number', Icons.phone_outlined, [FilteringTextInputFormatter.digitsOnly]),
+                const SizedBox(height: 24),
                 _buildDropdownField('Academic School', selectedSchool, _schools, (v) => setDialogState(() => selectedSchool = v)),
                 _buildDropdownField('Program', selectedProgram, _programs, (v) => setDialogState(() => selectedProgram = v)),
                 _buildDropdownField('Level', selectedLevel, _levels, (v) => setDialogState(() => selectedLevel = v)),
@@ -211,7 +239,7 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
                   'level': selectedLevel,
                   'class_name': selectedClass,
                   'phone_number': phoneController.text.trim(),
-                  'otp': (10000 + math.Random().nextInt(90000)).toString(),
+                  'otp': '12345',
                   'academic_school': selectedSchool,
                   'program': selectedProgram,
                   'has_voted': false,
@@ -221,10 +249,23 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
                 ref.invalidate(votersListProvider);
                 if (context.mounted) Navigator.pop(context);
               },
-              child: const Text('REGISTER VOTER'),
+              style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: const Text('REGISTER'),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFormTextField(TextEditingController controller, String label, IconData icon, List<TextInputFormatter> formatters) {
+    return TextField(
+      controller: controller,
+      inputFormatters: formatters,
+      decoration: InputDecoration(
+        labelText: label, 
+        prefixIcon: Icon(icon, size: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -232,84 +273,132 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final menuItems = ref.watch(menuItemsProvider);
+    final user = ref.watch(currentUserProvider);
     final votersAsync = ref.watch(votersListProvider);
+    final size = MediaQuery.of(context).size;
+    final bool isDesktop = size.width >= 1100;
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: Row(
-        children: [
-          AppSidebar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pushReplacementNamed(context, '/admin');
+      },
+      child: Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AdminAppBar(
+          title: 'Voter Registry',
+          user: user,
+        ),
+        drawer: !isDesktop ? Drawer(
+          width: size.width * 0.66,
+          child: AppSidebar(
             items: menuItems,
             currentRoute: '/admin/voters',
             onTap: (route) => MenuService.navigate(context, route, '/admin/voters'),
+            isDrawer: true,
           ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(theme),
-                  const SizedBox(height: 32),
-                  _buildSearchBar(theme),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: votersAsync.when(
-                      data: (voters) => _buildHierarchicalVoterList(theme, voters),
-                      loading: () => const Center(child: CircularProgressIndicator()),
-                      error: (err, stack) => Center(child: Text('Error: $err')),
-                    ),
+        ) : null,
+        body: SafeArea(
+          child: Row(
+            children: [
+              if (isDesktop)
+                AppSidebar(
+                  items: menuItems,
+                  currentRoute: '/admin/voters',
+                  onTap: (route) => MenuService.navigate(context, route, '/admin/voters'),
+                ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.all(isDesktop ? 32 : 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(theme),
+                      const SizedBox(height: 32),
+                      _buildSearchBar(theme),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: votersAsync.when(
+                          data: (voters) => _buildHierarchicalVoterList(theme, voters),
+                          loading: () => Skeletonizer(
+                            enabled: true,
+                            child: _buildHierarchicalVoterList(theme, _fakeVoters),
+                          ),
+                          error: (err, stack) => Center(child: Text('Error: $err')),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
+  final List<Student> _fakeVoters = List.generate(10, (index) => Student(
+    id: 'fake-$index',
+    fullName: 'Sample Student Name',
+    indexNumber: '12345678',
+    level: '100',
+    className: 'A',
+    phoneNumber: '0240000000',
+    academicSchool: 'Science',
+    program: 'Computer Science',
+    otp: '12345',
+    hasVoted: false,
+  ));
+
   Widget _buildHeader(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 16,
+      runSpacing: 16,
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Voter Management',
-              style: GoogleFonts.oswald(fontSize: 32, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppColors.textDark),
+              'Student Database',
+              style: GoogleFonts.plusJakartaSans(fontSize: 28, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppColors.textDark),
             ),
             Text(
-              'Manage voters grouped by Department, Program, Level, and Class',
-              style: GoogleFonts.inter(color: isDark ? Colors.white70 : AppColors.textLight, fontSize: 14),
+              'Hierarchical view of all registered voters',
+              style: GoogleFonts.inter(color: isDark ? Colors.white38 : AppColors.textLight, fontSize: 13),
             ),
           ],
         ),
-        Row(
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
           children: [
             OutlinedButton.icon(
               onPressed: _isImporting ? null : _showImportSettingsDialog,
               icon: _isImporting 
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : Icon(Icons.file_upload_outlined, color: isDark ? Colors.white : theme.colorScheme.primary),
-              label: Text('BULK IMPORT (EXCEL)', style: TextStyle(color: isDark ? Colors.white : theme.colorScheme.primary)),
+                : Icon(Icons.cloud_upload_outlined, color: isDark ? Colors.white : theme.colorScheme.primary, size: 18),
+              label: Text('BULK IMPORT', style: TextStyle(color: isDark ? Colors.white : theme.colorScheme.primary, fontSize: 13, fontWeight: FontWeight.bold)),
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                side: BorderSide(color: isDark ? Colors.white24 : theme.colorScheme.primary),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                side: BorderSide(color: isDark ? Colors.white10 : theme.colorScheme.primary.withValues(alpha: 0.2)),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
               ),
             ),
-            const SizedBox(width: 16),
             ElevatedButton.icon(
               onPressed: _showManualRegistrationDialog,
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('MANUAL REGISTRATION', style: TextStyle(color: Colors.white)),
+              icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+              label: const Text('ENROLL VOTER', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                elevation: 0,
               ),
             ),
           ],
@@ -320,26 +409,24 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
 
   Widget _buildSearchBar(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: isDark ? Colors.white12 : Colors.grey.withValues(alpha: 0.2)),
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+        borderRadius: BorderRadius.zero,
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: TextField(
-          controller: _searchController,
-          style: TextStyle(color: isDark ? Colors.white : Colors.black),
-          decoration: InputDecoration(
-            hintText: 'Search by School, Program, Level, Class, Name or Index Number...',
-            hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
-            prefixIcon: Icon(Icons.search, color: isDark ? Colors.white54 : Colors.grey),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            filled: false,
-          ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: TextField(
+        controller: _searchController,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black),
+        decoration: InputDecoration(
+          hintText: 'Search by Name, Index, Program or Level...',
+          hintStyle: TextStyle(color: isDark ? Colors.white24 : Colors.grey, fontSize: 14),
+          prefixIcon: Icon(Icons.search_rounded, color: isDark ? Colors.white38 : Colors.grey, size: 22),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          filled: false,
         ),
       ),
     );
@@ -349,7 +436,6 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final primaryColor = theme.colorScheme.primary;
     
-    // 1. Filter voters based on search query
     final filteredVoters = allVoters.where((s) {
       return s.fullName.toLowerCase().contains(_searchQuery) ||
              s.indexNumber.toLowerCase().contains(_searchQuery) ||
@@ -360,10 +446,18 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
     }).toList();
 
     if (filteredVoters.isEmpty) {
-      return const Center(child: Text('No voters found matching your search.'));
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off_rounded, size: 64, color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+            const SizedBox(height: 16),
+            const Text('No voters found matching your search.', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
     }
 
-    // 2. Group hierarchically
     Map<String, Map<String, Map<String, Map<String, List<Student>>>>> hierarchy = {};
 
     for (var student in filteredVoters) {
@@ -376,50 +470,62 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
 
     return ListView(
       children: hierarchy.entries.map((schoolEntry) {
-        return Card(
+        return Container(
           margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withValues(alpha: 0.02) : Colors.white,
+            borderRadius: BorderRadius.zero,
+            border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+          ),
           child: ExpansionTile(
             initiallyExpanded: _searchQuery.isNotEmpty,
-            leading: Icon(Icons.account_balance, color: isDark ? Colors.white70 : primaryColor),
-            title: Text(schoolEntry.key, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('${_countStudents(schoolEntry.value)} Students', style: TextStyle(color: isDark ? Colors.white60 : Colors.grey[600])),
+            shape: const RoundedRectangleBorder(side: BorderSide.none),
+            collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
+            leading: Icon(Icons.account_balance_rounded, color: isDark ? Colors.white38 : primaryColor, size: 20),
+            title: Text(schoolEntry.key, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 15)),
+            subtitle: Text('${_countStudents(schoolEntry.value)} Students', style: TextStyle(color: isDark ? Colors.white24 : Colors.grey, fontSize: 11)),
             children: schoolEntry.value.entries.map((programEntry) {
               return Padding(
-                padding: const EdgeInsets.only(left: 16.0),
+                padding: const EdgeInsets.only(left: 8.0),
                 child: ExpansionTile(
                   initiallyExpanded: _searchQuery.isNotEmpty,
-                  leading: const Icon(Icons.school_outlined, size: 20),
-                  title: Text(programEntry.key, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  shape: const RoundedRectangleBorder(side: BorderSide.none),
+                  leading: const Icon(Icons.school_outlined, size: 18),
+                  title: Text(programEntry.key, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                   children: programEntry.value.entries.map((levelEntry) {
                     return Padding(
-                      padding: const EdgeInsets.only(left: 16.0),
+                      padding: const EdgeInsets.only(left: 8.0),
                       child: ExpansionTile(
                         initiallyExpanded: _searchQuery.isNotEmpty,
-                        leading: const Icon(Icons.layers_outlined, size: 18),
-                        title: Text('Level ${levelEntry.key}'),
+                        leading: const Icon(Icons.layers_outlined, size: 16),
+                        title: Text('Level ${levelEntry.key}', style: const TextStyle(fontSize: 13)),
                         children: levelEntry.value.entries.map((classEntry) {
                           return Padding(
-                            padding: const EdgeInsets.only(left: 16.0),
+                            padding: const EdgeInsets.only(left: 8.0),
                             child: ExpansionTile(
                               initiallyExpanded: _searchQuery.isNotEmpty,
-                              leading: const Icon(Icons.class_outlined, size: 16),
-                              title: Text('Class: ${classEntry.key}'),
+                              leading: const Icon(Icons.class_outlined, size: 14),
+                              title: Text('Group ${classEntry.key}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                               children: classEntry.value.map((student) {
                                 return ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 4),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   leading: CircleAvatar(
-                                    radius: 16,
+                                    radius: 14,
                                     backgroundColor: (isDark ? Colors.white : primaryColor).withValues(alpha: 0.1),
-                                    child: Icon(Icons.person, color: isDark ? Colors.white : primaryColor, size: 16),
+                                    child: Icon(Icons.person, color: isDark ? Colors.white38 : primaryColor, size: 14),
                                   ),
-                                  title: Text(student.fullName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                                  subtitle: Text('Index: ${student.indexNumber}', style: const TextStyle(fontSize: 11)),
+                                  title: Text(student.fullName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  subtitle: Text('ID: ${student.indexNumber}', style: const TextStyle(fontSize: 10, fontFamily: 'monospace'), maxLines: 1, overflow: TextOverflow.ellipsis),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       _buildStatusChip(student.hasVoted),
-                                      IconButton(onPressed: () {}, icon: const Icon(Icons.edit_outlined, size: 18)),
-                                      IconButton(onPressed: () {}, icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18)),
+                                      IconButton(onPressed: () {}, icon: const Icon(Icons.edit_note_rounded, size: 18), visualDensity: VisualDensity.compact),
+                                      IconButton(
+                                        onPressed: () => _handleDeleteStudent(student), 
+                                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18), 
+                                        visualDensity: VisualDensity.compact
+                                      ),
                                     ],
                                   ),
                                 );
@@ -439,6 +545,34 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
     );
   }
 
+  Future<void> _handleDeleteStudent(Student student) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Student'),
+        content: Text('Remove ${student.fullName} (${student.indexNumber}) from the registry?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('DELETE'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await ref.read(electionServiceProvider).deleteStudent(student.id);
+      ref.invalidate(votersListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${student.fullName} has been removed.'))
+        );
+      }
+    }
+  }
+
   int _countStudents(Map<String, Map<String, Map<String, List<Student>>>> schoolData) {
     int count = 0;
     for (var program in schoolData.values) {
@@ -453,17 +587,18 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
 
   Widget _buildStatusChip(bool hasVoted) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: hasVoted ? Colors.green.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.zero,
       ),
       child: Text(
         hasVoted ? 'VOTED' : 'PENDING',
         style: TextStyle(
           color: hasVoted ? Colors.green : Colors.orange,
           fontWeight: FontWeight.bold,
-          fontSize: 10,
+          fontSize: 8,
+          letterSpacing: 0.5,
         ),
       ),
     );

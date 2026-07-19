@@ -1,99 +1,327 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/election_models.dart';
+import '../core/supabase_config.dart';
+import 'storage_service.dart';
+import 'package:flutter/foundation.dart';
 
 class ElectionService {
-  // UI-ONLY MOCK DATA
-  
-  // Student Operations
+  final SupabaseClient _client = SupabaseConfig.client;
+
+  // --- Student Operations ---
+
   Future<Student?> getStudentByIndex(String indexNumber) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (indexNumber == '20001234') {
-      return Student(
-        id: 'mock-student-id',
-        indexNumber: '20001234',
-        fullName: 'Emmanuel Kwesi Arthur',
-        level: '400',
-        className: 'BSc. Computer Science',
-        phoneNumber: '0241234567',
-        academicSchool: 'Science',
-        program: 'Computer Science',
-        otp: '12345',
-      );
-    }
-    return null;
-  }
-
-  Future<void> markStudentAsVoted(String studentId) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-  }
-
-  // Position & Candidate Operations
-  Future<List<Position>> getPositions() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return [
-      Position(id: 'p1', title: 'SRC President', order: 1),
-      Position(id: 'p2', title: 'General Secretary', order: 2),
-      Position(id: 'p3', title: 'Financial Secretary', order: 3),
-    ];
-  }
-
-  Future<List<Candidate>> getAllCandidates() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return [
-      Candidate(id: 'c1', fullName: 'John Mahama', positionId: 'p1', slogan: 'Resetting Ghana', voteCount: 1240),
-      Candidate(id: 'c2', fullName: 'Dr. Bawumia', positionId: 'p1', slogan: 'It is Possible', voteCount: 1100),
-      Candidate(id: 'c3', fullName: 'Alice Mensah', positionId: 'p2', slogan: 'Service with Integrity', voteCount: 850),
-      Candidate(id: 'c4', fullName: 'Bob Smith', positionId: 'p2', slogan: 'Your Voice Matters', voteCount: 600),
-      Candidate(id: 'c5', fullName: 'Charlie Brown', positionId: 'p3', slogan: 'Transparency First', voteCount: 920),
-    ];
-  }
-
-  // Voting Operations
-  Future<void> castVotes(List<Vote> votes) async {
-    await Future.delayed(const Duration(seconds: 1));
-  }
-
-  // Stats
-  Future<ElectionStats> getElectionStats() async {
-    return ElectionStats(
-      totalVoters: 4820,
-      totalVotesCast: 2481,
-      turnoutPercentage: 51.4,
-      activePolls: 3,
-      timeRemaining: const Duration(hours: 4, minutes: 12),
-    );
+    final response = await _client
+        .from('students')
+        .select()
+        .eq('index_number', indexNumber)
+        .maybeSingle();
+    
+    if (response == null) return null;
+    return Student.fromJson(response);
   }
 
   Future<List<Student>> getAllStudents() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return [
-      Student(id: '1', fullName: 'Emmanuel Kwesi Arthur', indexNumber: '20001234', level: '400', className: 'CS-A', phoneNumber: '0241234567', academicSchool: 'Science', program: 'Computer Science', otp: '12345', hasVoted: true),
-      Student(id: '2', fullName: 'Alice Ama', indexNumber: '20001235', level: '400', className: 'CS-B', phoneNumber: '0241234568', academicSchool: 'Science', program: 'Computer Science', otp: '12345'),
-      Student(id: '3', fullName: 'Bob Kojo', indexNumber: '20001236', level: '300', className: 'IT-A', phoneNumber: '0241234569', academicSchool: 'Science', program: 'Information Technology', otp: '12345'),
-      Student(id: '4', fullName: 'Charlie Mensah', indexNumber: '20001237', level: '300', className: 'IT-A', phoneNumber: '0241234570', academicSchool: 'Science', program: 'Information Technology', otp: '12345', hasVoted: true),
-      Student(id: '5', fullName: 'David Boateng', indexNumber: '20001238', level: '200', className: 'ME-A', phoneNumber: '0241234571', academicSchool: 'Engineering', program: 'Mechanical Engineering', otp: '12345'),
-      Student(id: '6', fullName: 'Eva Osei', indexNumber: '20001239', level: '200', className: 'ME-A', phoneNumber: '0241234572', academicSchool: 'Engineering', program: 'Mechanical Engineering', otp: '12345'),
-      Student(id: '7', fullName: 'Frank Appiah', indexNumber: '20001240', level: '100', className: 'EE-A', phoneNumber: '0241234573', academicSchool: 'Engineering', program: 'Electrical Engineering', otp: '12345', hasVoted: true),
-      Student(id: '8', fullName: 'Grace Antwi', indexNumber: '20001241', level: '100', className: 'EE-B', phoneNumber: '0241234574', academicSchool: 'Engineering', program: 'Electrical Engineering', otp: '12345'),
-    ];
+    final response = await _client
+        .from('students')
+        .select()
+        .order('full_name');
+    
+    return (response as List).map((json) => Student.fromJson(json)).toList();
   }
 
-  // Admin: Candidate Registration
-  Future<void> addCandidate(Candidate candidate) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-  }
-
-  // Admin: Position Registration
-  Future<void> addPosition(Position position) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-  }
-
-  // Admin: Student Registration
   Future<void> registerStudent(Map<String, dynamic> studentData) async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    await _client.from('students').insert(studentData);
   }
 
-  // Admin: Bulk Import
+  Future<void> markStudentAsVoted(String studentId) async {
+    // The database trigger 'on_vote_cast' handles this automatically during voting.
+    // This method allows for manual status updates by admins.
+    await _client
+        .from('students')
+        .update({
+          'has_voted': true, 
+          'voted_at': DateTime.now().toIso8601String()
+        })
+        .eq('id', studentId);
+  }
+
   Future<void> bulkImportStudents(List<Map<String, dynamic>> studentsData) async {
-    await Future.delayed(const Duration(seconds: 2));
+    await _client.from('students').insert(studentsData);
+  }
+
+  // --- Position & Candidate Operations ---
+
+  Future<List<Position>> getPositions() async {
+    final response = await _client
+        .from('positions')
+        .select()
+        .order('order');
+    
+    return (response as List).map((json) => Position.fromJson(json)).toList();
+  }
+
+  Future<List<Candidate>> getAllCandidates() async {
+    final response = await _client.from('candidates').select();
+    return (response as List).map((json) => Candidate.fromJson(json)).toList();
+  }
+
+  Future<void> addCandidate(Candidate candidate) async {
+    await _client.from('candidates').insert(candidate.toJson());
+  }
+
+  Future<void> updateCandidate(Candidate candidate) async {
+    await _client
+        .from('candidates')
+        .update(candidate.toJson())
+        .eq('id', candidate.id);
+  }
+
+  Future<void> deleteCandidate(String id) async {
+    await _client.from('candidates').delete().eq('id', id);
+  }
+
+  Future<void> deleteAllCandidates() async {
+    await _client.from('candidates').delete().not('id', 'is', null); 
+  }
+
+  Future<void> purgeElectionData() async {
+    // 1. Delete all votes
+    await _client.from('votes').delete().not('id', 'is', null);
+    
+    // 2. Reset student voting status
+    await _client.from('students').update({
+      'has_voted': false,
+      'voted_at': null,
+    }).not('id', 'is', null);
+    
+    // 3. Reset election settings
+    await updateSettings(ElectionSettings(
+      id: 'current_election',
+      electionTitle: 'RavenVote - UENR E-Voting',
+      isActive: false,
+      startTime: null,
+      endTime: null,
+    ));
+  }
+
+  Future<void> addPosition(Position position) async {
+    await _client.from('positions').insert(position.toJson());
+  }
+
+  Future<void> deletePosition(String id) async {
+    await _client.from('positions').delete().eq('id', id);
+  }
+
+  Future<void> deleteStudent(String id) async {
+    await _client.from('students').delete().eq('id', id);
+  }
+
+  Future<String?> uploadCandidateImage(String candidateId, Uint8List bytes, {String ext = 'jpg'}) async {
+    final storage = StorageService();
+    return await storage.uploadCandidateImage(candidateId, bytes, ext);
+  }
+
+  // --- Voting Operations ---
+
+  Future<void> castVotes(List<Vote> votes) async {
+    final votesJson = votes.map((v) => v.toJson()).toList();
+    await _client.from('votes').insert(votesJson);
+  }
+
+  Future<List<Map<String, dynamic>>> getVoteLogs() async {
+    final response = await _client
+        .from('votes')
+        .select('''
+          id,
+          timestamp,
+          students (full_name, index_number),
+          candidates (full_name),
+          positions (title)
+        ''')
+        .order('timestamp', ascending: false);
+    
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  // --- Stats & Real-time ---
+
+  Future<ElectionSettings?> getActiveElection() async {
+    final response = await _client
+        .from('settings')
+        .select()
+        .eq('is_active', true)
+        .maybeSingle();
+    
+    if (response == null) return null;
+    return ElectionSettings.fromJson(response);
+  }
+
+  Future<ElectionSettings> getSettings() async {
+    // Try to get active, else get most recently updated
+    final active = await getActiveElection();
+    if (active != null) return active;
+
+    final response = await _client
+        .from('settings')
+        .select()
+        .order('updated_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    
+    if (response == null) {
+      return ElectionSettings(id: 'current_election', electionTitle: 'RavenVote - UENR E-Voting');
+    }
+    return ElectionSettings.fromJson(response);
+  }
+
+  Future<List<ElectionSettings>> getAllElections() async {
+    final response = await _client
+        .from('settings')
+        .select()
+        .order('updated_at', ascending: false);
+    
+    return (response as List).map((json) => ElectionSettings.fromJson(json)).toList();
+  }
+
+  Future<void> deleteElection(String id) async {
+    await _client.from('settings').delete().eq('id', id);
+  }
+
+  Future<void> updateSettings(ElectionSettings settings) async {
+    // If we are activating this one, deactivate others
+    if (settings.isActive) {
+      await _client.from('settings').update({'is_active': false}).neq('id', settings.id);
+    }
+
+    await _client
+        .from('settings')
+        .upsert(settings.toJson());
+  }
+
+  Stream<ElectionSettings> watchSettings() {
+    return _client
+        .from('settings')
+        .stream(primaryKey: ['id'])
+        .order('id')
+        .map((data) {
+          if (data.isEmpty) {
+            return ElectionSettings(id: 'current_election', electionTitle: 'RavenVote - UENR E-Voting');
+          }
+          // Try to find the active one in the stream data
+          final active = data.where((json) => json['is_active'] == true).firstOrNull;
+          if (active != null) return ElectionSettings.fromJson(active);
+          
+          return ElectionSettings.fromJson(data.first);
+        });
+  }
+
+  Future<List<AnomalyAlert>> getAnomalies() async {
+    final response = await _client
+        .from('anomalies')
+        .select()
+        .order('id', ascending: false);
+    
+    return (response as List).map((json) {
+      // Convert created_at to a relative time string (e.g., "5 mins ago")
+      final createdAt = json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now();
+      final diff = DateTime.now().difference(createdAt);
+      String timeStr;
+      if (diff.inMinutes < 1) {
+        timeStr = 'Just now';
+      } else if (diff.inMinutes < 60) {
+        timeStr = '${diff.inMinutes} mins ago';
+      } else if (diff.inHours < 24) {
+        timeStr = '${diff.inHours} hours ago';
+      } else {
+        timeStr = '${diff.inDays} days ago';
+      }
+
+      return AnomalyAlert(
+        id: json['id'].toString(),
+        title: json['title'].toString(),
+        details: json['details'].toString(),
+        time: timeStr,
+        severity: AnomalySeverity.values.byName(json['severity'] ?? 'low'),
+      );
+    }).toList();
+  }
+
+  Stream<List<Candidate>> watchCandidates() {
+    return _client
+        .from('candidates')
+        .stream(primaryKey: ['id'])
+        .map((data) => data.map((json) => Candidate.fromJson(json)).toList());
+  }
+
+  Future<ElectionStats> getElectionStats() async {
+    final settings = await getSettings();
+    final students = await getAllStudents();
+    final totalVoters = students.length;
+    final votedStudents = students.where((s) => s.hasVoted).toList();
+    final totalVotesCast = votedStudents.length;
+
+    // Distribution by School
+    final Map<String, int> schoolVotes = {};
+    for (var student in votedStudents) {
+      final school = student.academicSchool.isEmpty ? 'Unknown' : student.academicSchool;
+      schoolVotes[school] = (schoolVotes[school] ?? 0) + 1;
+    }
+
+    // Participation by Level
+    final Map<String, int> levelTotal = {};
+    final Map<String, int> levelVoted = {};
+    for (var student in students) {
+      levelTotal[student.level] = (levelTotal[student.level] ?? 0) + 1;
+      if (student.hasVoted) {
+        levelVoted[student.level] = (levelVoted[student.level] ?? 0) + 1;
+      }
+    }
+
+    final Map<String, double> participationByLevel = {};
+    levelTotal.forEach((level, total) {
+      final voted = levelVoted[level] ?? 0;
+      participationByLevel[level] = total > 0 ? (voted / total) : 0.0;
+    });
+
+    // Hourly Participation (Real Trend since session start)
+    final Map<int, int> hourlyParticipation = {};
+    try {
+      var query = _client.from('votes').select('timestamp');
+      
+      if (settings.startTime != null) {
+        query = query.gte('timestamp', settings.startTime!.toIso8601String());
+      }
+      
+      final votesResponse = await query;
+      
+      for (var vote in (votesResponse as List)) {
+        final timestamp = DateTime.parse(vote['timestamp'].toString()).toLocal();
+        final hour = timestamp.hour;
+        hourlyParticipation[hour] = (hourlyParticipation[hour] ?? 0) + 1;
+      }
+    } catch (e) {
+      debugPrint('Error fetching hourly stats: $e');
+    }
+
+    final positionRes = await _client.from('positions').select('id');
+    final activePolls = positionRes.length;
+
+    // Calculate time remaining
+    Duration remaining = Duration.zero;
+    if (settings.isActive && settings.endTime != null) {
+      remaining = settings.endTime!.difference(DateTime.now());
+      if (remaining.isNegative) remaining = Duration.zero;
+    }
+
+    return ElectionStats(
+      totalVoters: totalVoters,
+      totalVotesCast: totalVotesCast,
+      turnoutPercentage: totalVoters > 0 ? (totalVotesCast / totalVoters) * 100 : 0,
+      activePolls: activePolls,
+      timeRemaining: remaining,
+      votesBySchool: schoolVotes,
+      participationByLevel: participationByLevel,
+      hourlyParticipation: hourlyParticipation,
+    );
   }
 }

@@ -1,46 +1,37 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/supabase_config.dart';
 
 class AuthService {
-  // UI-ONLY MOCK AUTH - ACCEPTS ANY CREDENTIALS
+  final SupabaseClient _client = SupabaseConfig.client;
 
+  /// Signs in a user with email and password.
   Future<AuthResponse> signIn(String email, String password) async {
-    await Future.delayed(const Duration(seconds: 1));
-    
-    // Accept any credentials for testing
-    return AuthResponse(
-      session: Session(
-        accessToken: 'mock-token',
-        tokenType: 'bearer',
-        user: User(
-          id: 'mock-admin-id',
-          appMetadata: {},
-          userMetadata: {},
-          aud: 'authenticated',
-          createdAt: DateTime.now().toIso8601String(),
-          email: email,
-        ),
-      ),
-      user: User(
-        id: 'mock-admin-id',
-        appMetadata: {},
-        userMetadata: {},
-        aud: 'authenticated',
-        createdAt: DateTime.now().toIso8601String(),
-        email: email,
-      ),
+    return await _client.auth.signInWithPassword(
+      email: email,
+      password: password,
     );
   }
 
-  Future<AuthResponse> signUp(String email, String password) async {
-    await Future.delayed(const Duration(seconds: 1));
-    throw Exception('Sign up disabled in UI-only mode');
+  /// Registers a new user with metadata (first_name, surname).
+  Future<AuthResponse> signUp(String email, String password, {required String firstName, required String surname}) async {
+    return await _client.auth.signUp(
+      email: email,
+      password: password,
+      data: {
+        'first_name': firstName,
+        'surname': surname,
+      },
+    );
   }
 
+  /// Signs out the current user.
   Future<void> signOut() async {
-    await Future.delayed(const Duration(milliseconds: 500));
+    await _client.auth.signOut();
   }
 
-  User? get currentUser => null;
+  /// Returns the currently logged in Supabase user.
+  User? get currentUser => _client.auth.currentUser;
 
-  Stream<AuthState> get authStateChanges => const Stream.empty();
+  /// Stream of authentication state changes.
+  Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 }

@@ -21,79 +21,97 @@ class AppSidebar extends ConsumerWidget {
   final List<SidebarItem> items;
   final String currentRoute;
   final Function(String route)? onTap;
+  final bool isDrawer;
 
   const AppSidebar({
     super.key,
     required this.items,
     required this.currentRoute,
     this.onTap,
+    this.isDrawer = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final isExpanded = ref.watch(sidebarExpandedProvider);
+    final isExpanded = isDrawer ? true : ref.watch(sidebarExpandedProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
+    Widget content = Column(
+      children: [
+        _buildHeader(theme, isExpanded, ref),
+        const SizedBox(height: 20),
+        Expanded(
+          child: ListView.builder(
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final isSelected = currentRoute == item.route;
+              return _buildMenuItem(context, item, isSelected, theme, isExpanded);
+            },
+          ),
+        ),
+        const Divider(color: Colors.white10),
+        _buildUserSection(user, theme, isExpanded),
+        _buildLogoutButton(context, ref, theme, isExpanded),
+        const SizedBox(height: 20),
+      ],
+    );
+
+    if (isDrawer) {
+      return Container(
+        color: isDark ? Colors.black : const Color(0xFF1A1A1A),
+        child: content,
+      );
+    }
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: isExpanded ? 260 : 80,
       color: isDark ? Colors.black : const Color(0xFF1A1A1A),
-      child: Column(
-        children: [
-          _buildHeader(theme, isExpanded, ref),
-          const SizedBox(height: 20),
-          Expanded(
-            child: ListView.builder(
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final isSelected = currentRoute == item.route;
-                return _buildMenuItem(context, item, isSelected, theme, isExpanded);
-              },
-            ),
-          ),
-          const Divider(color: Colors.white10),
-          _buildUserSection(user, theme, isExpanded),
-          _buildLogoutButton(context, ref, theme, isExpanded),
-          const SizedBox(height: 20),
-        ],
-      ),
+      child: content,
     );
   }
 
   Widget _buildHeader(ThemeData theme, bool isExpanded, WidgetRef ref) {
     return Container(
-      padding: const EdgeInsets.only(top: 60, bottom: 20, left: 16, right: 16),
+      padding: EdgeInsets.only(top: isDrawer ? 40 : 20, bottom: 20, left: 16, right: 16),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: isExpanded ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center,
-            children: [
-              if (isExpanded)
-                const CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Colors.white,
-                  child: Padding(
-                    padding: EdgeInsets.all(4.0),
-                    child: Image(image: AssetImage('assets/logo/logo.png')),
-                  ),
-                ),
-              IconButton(
-                icon: Icon(isExpanded ? Icons.chevron_left : Icons.menu, color: Colors.white),
-                onPressed: () => ref.read(sidebarExpandedProvider.notifier).state = !isExpanded,
-              ),
-            ],
-          ),
           if (isExpanded) ...[
-            const SizedBox(height: 12),
-            const Text(
-              'RavenVote Admin',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-              overflow: TextOverflow.ellipsis,
+            CircleAvatar(
+              radius: 30,
+              backgroundColor: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Image.asset(
+                  'assets/logo/logo.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
             ),
-          ],
+            const SizedBox(height: 16),
+            const Text(
+              'RavenVote',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 1),
+            ),
+            const Text(
+              'ADMIN PANEL',
+              style: TextStyle(color: Colors.white38, fontWeight: FontWeight.w600, fontSize: 10, letterSpacing: 2),
+            ),
+          ] else
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: Image.asset(
+                  'assets/logo/logo.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -120,6 +138,7 @@ class AppSidebar extends ConsumerWidget {
               style: TextStyle(
                 color: isSelected ? Colors.white : Colors.white60,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontSize: 13,
               ),
               overflow: TextOverflow.ellipsis,
             )
@@ -133,6 +152,8 @@ class AppSidebar extends ConsumerWidget {
 
   Widget _buildUserSection(UserAccount? user, ThemeData theme, bool isExpanded) {
     final primaryColor = theme.colorScheme.primary;
+    final photoUrl = user?.photoUrl;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: Row(
@@ -141,7 +162,12 @@ class AppSidebar extends ConsumerWidget {
           CircleAvatar(
             radius: 18,
             backgroundColor: primaryColor == Colors.black ? Colors.white : primaryColor,
-            child: Icon(Icons.person, color: primaryColor == Colors.black ? Colors.black : Colors.white, size: 20),
+            backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                ? NetworkImage(photoUrl)
+                : null,
+            child: (photoUrl == null || photoUrl.isEmpty)
+                ? Icon(Icons.person, color: primaryColor == Colors.black ? Colors.black : Colors.white, size: 20)
+                : null,
           ),
           if (isExpanded) ...[
             const SizedBox(width: 12),

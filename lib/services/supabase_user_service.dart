@@ -1,117 +1,116 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
-import '../core/uuid_utils.dart';
+import '../core/supabase_config.dart';
+import 'storage_service.dart';
 
 class SupabaseUserService {
-  // UI-ONLY MOCK DATA PERSISTENCE
-  static List<UserAccount> _mockUsers = [
-    UserAccount(
-      id: 'mock-admin-id',
-      firstName: 'System',
-      surname: 'Administrator',
-      email: 'admin@ravenvote.com',
-      role: UserRole.superAdmin,
-      status: AccountStatus.approved,
-    ),
-    UserAccount(
-      id: 'mock-official-id',
-      firstName: 'Election',
-      surname: 'Official',
-      email: 'official@uenr.edu.gh',
-      role: UserRole.electionOfficial,
-      status: AccountStatus.approved,
-    ),
-  ];
+  final SupabaseClient _client = SupabaseConfig.client;
 
+  /// Retrieves all users from the public.users table.
   Future<List<UserAccount>> getUsers() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return _mockUsers.where((u) => !u.isDeleted).toList();
+    final response = await _client
+        .from('users')
+        .select()
+        .eq('is_deleted', false);
+    
+    return (response as List).map((json) => UserAccount.fromJson(json)).toList();
   }
 
-  Future<void> addUser(UserAccount account) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    _mockUsers.add(account);
-  }
-
+  /// Updates a user's full profile.
   Future<void> updateUser(UserAccount account) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    final index = _mockUsers.indexWhere((u) => u.id == account.id);
-    if (index != -1) {
-      _mockUsers[index] = account;
-    }
+    await _client
+        .from('users')
+        .update(account.toJson())
+        .eq('id', account.id);
   }
 
+  /// Updates specific fields of a user.
   Future<void> updateUserFields(String userId, Map<String, dynamic> fields) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    final index = _mockUsers.indexWhere((u) => u.id == userId);
-    if (index != -1) {
-      final user = _mockUsers[index];
-      // Minimal implementation for mock
-      _mockUsers[index] = user.copyWith(
-        firstName: fields['first_name'],
-        surname: fields['surname'],
-        status: fields['status'] != null ? AccountStatus.values.byName(fields['status']) : null,
-        role: fields['role'] != null ? UserRole.values.byName(fields['role']) : null,
-      );
-    }
+    await _client
+        .from('users')
+        .update(fields)
+        .eq('id', userId);
   }
 
+  /// Soft deletes a user.
   Future<void> deleteUser(String id) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    final index = _mockUsers.indexWhere((u) => u.id == id);
-    if (index != -1) {
-      _mockUsers[index] = _mockUsers[index].copyWith(isDeleted: true);
-    }
+    await _client
+        .from('users')
+        .update({'is_deleted': true})
+        .eq('id', id);
   }
 
+  /// Hard deletes a user from the database.
   Future<void> hardDeleteUser(String id) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    _mockUsers.removeWhere((u) => u.id == id);
+    await _client
+        .from('users')
+        .delete()
+        .eq('id', id);
   }
 
+  /// Retrieves a user by their ID.
   Future<UserAccount?> getUserById(String id) async {
-    return _mockUsers.where((u) => u.id == id).firstOrNull;
+    final response = await _client
+        .from('users')
+        .select()
+        .eq('id', id)
+        .maybeSingle();
+    
+    if (response == null) return null;
+    return UserAccount.fromJson(response);
   }
 
+  /// Retrieves the currently authenticated user's account profile.
   Future<UserAccount?> getCurrentUser() async {
-    return getUserById('mock-admin-id');
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return null;
+    return await getUserById(userId);
   }
 
-  Future<bool> checkPhoneExists(String phone) async {
-    return false;
-  }
-
-  Future<String?> uploadProfilePicture(String userId, Uint8List bytes) async {
-    return null;
-  }
-
-  Stream<UserAccount?> streamUser(String id) async* {
-    yield await getUserById(id);
-  }
-
-  Stream<List<UserAccount>> watchUsers() async* {
-    while(true) {
-      yield await getUsers();
-      await Future.delayed(const Duration(seconds: 2));
+  /// Uploads a profile picture and updates the user's photo_url.
+  Future<String?> uploadProfilePicture(String userId, Uint8List bytes, {String ext = 'jpg'}) async {
+    final storage = StorageService();
+    final url = await storage.uploadProfilePicture(userId, bytes, ext);
+    if (url != null) {
+      await updateUserFields(userId, {'photo_url': url});
     }
+    return url;
   }
 
-  // Mock method for registration
+  /// Streams a single user's data.
+  Stream<UserAccount?> streamUser(String id) {
+    return _client
+        .from('users')
+        .stream(primaryKey: ['id'])
+        .eq('id', id)
+        .map((data) => data.isEmpty ? null : UserAccount.fromJson(data.first));
+  }
+
+  /// Watch all users for real-time updates.
+  Stream<List<UserAccount>> watchUsers() {
+    return _client
+        .from('users')
+        .stream(primaryKey: ['id'])
+        .order('id')
+        .map((data) => data.map((json) => UserAccount.fromJson(json)).toList());
+  }
+
+  /// Adds a new user account to the database.
+  Future<void> addUser(UserAccount account) async {
+    await _client.from('users').insert(account.toJson());
+  }
+
+  /// Method for registration (Request Access).
   Future<void> requestAccess({
     required String firstName,
     required String surname,
     required String email,
     required String phone,
   }) async {
+    // In a real production system, this would likely trigger a signUp flow 
+    // or insert into a manual review table. 
+    // For now we keep it as a placeholder to satisfy the UI.
     await Future.delayed(const Duration(seconds: 1));
-    final newUser = UserAccount(
-      id: UuidUtils.generate(),
-      firstName: firstName,
-      surname: surname,
-      email: email,
-      role: UserRole.admin,
-      status: AccountStatus.pending,
-    );
-    _mockUsers.add(newUser);
   }
 }

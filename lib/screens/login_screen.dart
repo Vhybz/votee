@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../core/constants.dart';
 import '../core/app_strings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,11 +16,29 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  late AnimationController _bgAnimationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _bgAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _bgAnimationController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
@@ -46,7 +66,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         try {
           userAccount = ref.read(userProvider).firstWhere((u) => u.id == response.user!.id);
         } catch (_) {
-          userAccount = await notifier.loadUsers().then((_) => ref.read(userProvider).firstWhere((u) => u.id == response.user!.id));
+          await notifier.loadUsers();
+          userAccount = ref.read(userProvider).where((u) => u.id == response.user!.id).firstOrNull;
         }
 
         if (userAccount == null) {
@@ -77,7 +98,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           return;
         }
 
-        // Successful login
         ref.read(currentUserIdProvider.notifier).state = userAccount.id;
 
         if (mounted) {
@@ -86,20 +106,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        String title = AppStrings.loginFailedTitle;
-        String errorMessage = e.toString();
-        
-        if (errorMessage.contains('Invalid login credentials')) {
-          errorMessage = AppStrings.invalidCredentialsError;
-        } else if (errorMessage.contains('Email not confirmed')) {
-          errorMessage = AppStrings.emailNotConfirmedError;
-        } else if (errorMessage.contains('User not found')) {
-          errorMessage = AppStrings.userNotFoundError;
-        } else if (errorMessage.contains('network')) {
-          errorMessage = AppStrings.networkError;
-        }
-
-        _showMessage(title, errorMessage, isError: true);
+        _showMessage(AppStrings.loginFailedTitle, e.toString(), isError: true);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -121,8 +128,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             Expanded(
               child: Text(
                 title, 
-                style: const TextStyle(fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 18),
               ),
             ),
           ],
@@ -143,143 +149,201 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
     final bool isMobile = size.width < 600;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      body: SafeArea(
-        child: Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [theme.colorScheme.primary, HSLColor.fromColor(theme.colorScheme.primary).withLightness(0.15).toColor()],
-            ),
-          ),
-          child: Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(isMobile ? AppSpacing.m : AppSpacing.l),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 420),
-                width: size.width * (isMobile ? 0.9 : 0.8),
-                padding: EdgeInsets.all(isMobile ? AppSpacing.l : AppSpacing.xl),
+      resizeToAvoidBottomInset: true,
+      body: Stack(
+        children: [
+          // Animated Background
+          AnimatedBuilder(
+            animation: _bgAnimationController,
+            builder: (context, child) {
+              return Container(
+                width: double.infinity,
+                height: double.infinity,
                 decoration: BoxDecoration(
-                  color: theme.cardTheme.color,
-                  borderRadius: BorderRadius.circular(AppRadius.l),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3), 
-                      blurRadius: 20, 
-                      offset: const Offset(0, 10)
-                    ),
-                  ],
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      theme.colorScheme.primary,
+                      Color.lerp(theme.colorScheme.primary, Colors.black, 0.6 * _bgAnimationController.value)!,
+                    ],
+                  ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: isMobile ? 50 : 60,
-                      backgroundColor: Colors.white,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Image.asset(
-                          'assets/logo/logo.png',
-                          fit: BoxFit.contain,
-                        ),
+              );
+            },
+          ),
+          
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 40, vertical: 20),
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  padding: EdgeInsets.all(isMobile ? 24 : 40),
+                  decoration: BoxDecoration(
+                    color: isDark 
+                        ? const Color(0xFF121212) 
+                        : Colors.white,
+                    borderRadius: BorderRadius.zero,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.2), 
+                        blurRadius: 40, 
+                        offset: const Offset(0, 20)
                       ),
+                    ],
+                    border: Border.all(
+                      color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
                     ),
-                    const SizedBox(height: AppSpacing.l),
-                    Text(
-                      AppStrings.loginTitle,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: isMobile ? 24 : 28, 
-                        fontWeight: FontWeight.bold, 
-                        color: theme.brightness == Brightness.dark ? Colors.white : theme.colorScheme.primary,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    Text(
-                      AppStrings.loginSubtitle,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 10, 
-                        fontWeight: FontWeight.w600, 
-                        color: theme.brightness == Brightness.dark ? Colors.white70 : theme.colorScheme.primary.withValues(alpha: 0.8), 
-                      letterSpacing: 2.5,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      height: 2,
-                      width: 40,
-                      color: theme.brightness == Brightness.dark ? Colors.white24 : theme.colorScheme.primary.withValues(alpha: 0.2),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      AppStrings.signInHeader, 
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 14),
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-                    TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: AppStrings.emailLabel,
-                        prefixIcon: Icon(Icons.email_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.m),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      decoration: InputDecoration(
-                        labelText: AppStrings.passwordLabel,
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleLogin,
-                        child: _isLoading 
-                            ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
-                            : const Text(AppStrings.loginButton, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.l),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const PasswordRecoveryScreen()),
-                            );
-                          },
-                          child: const Text('Forgot Password?', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                        const Text('|', style: TextStyle(color: Colors.grey)),
-                        TextButton(
-                          onPressed: () => Navigator.pushNamed(context, '/admin/register'),
-                          child: const Text('Request Access', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildLogo(isMobile),
+                      const SizedBox(height: 32),
+                      _buildHeader(theme, isMobile, isDark),
+                      const SizedBox(height: 40),
+                      _buildForm(theme, isDark),
+                      const SizedBox(height: 40),
+                      _buildLoginButton(theme, isDark),
+                      const SizedBox(height: 24),
+                      _buildFooterLinks(isDark),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogo(bool isMobile) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 15),
+        ],
+      ),
+      child: CircleAvatar(
+        radius: isMobile ? 40 : 50,
+        backgroundColor: Colors.white,
+        child: ClipOval(
+          child: Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Image.asset('assets/logo/logo.png', fit: BoxFit.contain),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme, bool isMobile, bool isDark) {
+    return Column(
+      children: [
+        Text(
+          AppStrings.loginTitle,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: isMobile ? 26 : 30, 
+            fontWeight: FontWeight.w800, 
+            color: isDark ? Colors.white : theme.colorScheme.primary,
+            letterSpacing: -1.0,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          AppStrings.loginSubtitle.toUpperCase(),
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(
+            fontSize: 10, 
+            fontWeight: FontWeight.bold, 
+            color: isDark ? Colors.white38 : theme.colorScheme.primary.withValues(alpha: 0.5), 
+            letterSpacing: 2.5,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForm(ThemeData theme, bool isDark) {
+    return Column(
+      children: [
+        TextField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
+          style: TextStyle(color: isDark ? Colors.white : Colors.black),
+          decoration: const InputDecoration(
+            labelText: "Admin Email",
+            prefixIcon: Icon(Icons.alternate_email_rounded, size: 20),
+          ),
+        ),
+        const SizedBox(height: 20),
+        TextField(
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
+          style: TextStyle(color: isDark ? Colors.white : Colors.black),
+          decoration: InputDecoration(
+            labelText: AppStrings.passwordLabel,
+            prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+            suffixIcon: IconButton(
+              icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, size: 18),
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoginButton(ThemeData theme, bool isDark) {
+    return SizedBox(
+      width: double.infinity,
+      height: 60,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _handleLogin,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isDark ? Colors.white : theme.colorScheme.primary,
+          foregroundColor: isDark ? Colors.black : Colors.white,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          elevation: 0,
+        ),
+        child: _isLoading 
+            ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: isDark ? Colors.black : Colors.white, strokeWidth: 2))
+            : Text(
+                AppStrings.loginButton.toUpperCase(), 
+                style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)
+              ),
+      ),
+    );
+  }
+
+  Widget _buildFooterLinks(bool isDark) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      children: [
+        TextButton(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PasswordRecoveryScreen())),
+          child: Text('Forgot Password?', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isDark ? Colors.white54 : Colors.grey.shade700)),
+        ),
+        const Text('•', style: TextStyle(color: Colors.grey)),
+        TextButton(
+          onPressed: () => Navigator.pushNamed(context, '/admin/register'),
+          child: Text('Request Access', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isDark ? Colors.white54 : Colors.grey.shade700)),
+        ),
+      ],
     );
   }
 }

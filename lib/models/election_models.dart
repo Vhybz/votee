@@ -63,12 +63,14 @@ class Position {
   final String title;
   final int maxSelections;
   final int order;
+  final String? electionId;
 
   Position({
     required this.id,
     required this.title,
     this.maxSelections = 1,
     this.order = 0,
+    this.electionId,
   });
 
   factory Position.fromJson(Map<String, dynamic> json) {
@@ -77,16 +79,19 @@ class Position {
       title: json['title']?.toString() ?? '',
       maxSelections: json['max_selections'] != null ? int.tryParse(json['max_selections'].toString()) ?? 1 : 1,
       order: json['order'] != null ? int.tryParse(json['order'].toString()) ?? 0 : 0,
+      electionId: json['election_id']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {
+    final map = {
       'id': id,
       'title': title,
       'max_selections': maxSelections,
       'order': order,
     };
+    if (electionId != null) map['election_id'] = electionId!;
+    return map;
   }
 }
 
@@ -128,6 +133,23 @@ class Candidate {
       'vote_count': voteCount,
     };
   }
+
+  Candidate copyWith({
+    String? fullName,
+    String? positionId,
+    String? slogan,
+    String? imageUrl,
+    int? voteCount,
+  }) {
+    return Candidate(
+      id: id,
+      fullName: fullName ?? this.fullName,
+      positionId: positionId ?? this.positionId,
+      slogan: slogan ?? this.slogan,
+      imageUrl: imageUrl ?? this.imageUrl,
+      voteCount: voteCount ?? this.voteCount,
+    );
+  }
 }
 
 class Vote {
@@ -156,13 +178,16 @@ class Vote {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
+    final Map<String, dynamic> data = {
       'student_id': studentId,
       'candidate_id': candidateId,
       'position_id': positionId,
       'timestamp': timestamp.toIso8601String(),
     };
+    if (id.isNotEmpty) {
+      data['id'] = id;
+    }
+    return data;
   }
 }
 
@@ -172,6 +197,9 @@ class ElectionStats {
   final double turnoutPercentage;
   final int activePolls;
   final Duration timeRemaining;
+  final Map<String, int> votesBySchool;
+  final Map<String, double> participationByLevel;
+  final Map<int, int> hourlyParticipation; // Hour (0-23) -> Vote Count
 
   ElectionStats({
     required this.totalVoters,
@@ -179,6 +207,9 @@ class ElectionStats {
     required this.turnoutPercentage,
     required this.activePolls,
     required this.timeRemaining,
+    required this.votesBySchool,
+    required this.participationByLevel,
+    required this.hourlyParticipation,
   });
 }
 
@@ -199,3 +230,54 @@ class AnomalyAlert {
 }
 
 enum AnomalySeverity { high, medium, low }
+
+class ElectionSettings {
+  final String id;
+  final String electionTitle;
+  final DateTime? startTime;
+  final DateTime? endTime;
+  final bool isActive;
+
+  ElectionSettings({
+    required this.id,
+    required this.electionTitle,
+    this.startTime,
+    this.endTime,
+    this.isActive = false,
+  });
+
+  factory ElectionSettings.fromJson(Map<String, dynamic> json) {
+    return ElectionSettings(
+      id: json['id']?.toString() ?? '',
+      electionTitle: json['election_title']?.toString() ?? 'RavenVote - UENR E-Voting',
+      startTime: json['start_time'] != null ? DateTime.parse(json['start_time'].toString()) : null,
+      endTime: json['end_time'] != null ? DateTime.parse(json['end_time'].toString()) : null,
+      isActive: json['is_active'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'election_title': electionTitle,
+      'start_time': startTime?.toIso8601String(),
+      'end_time': endTime?.toIso8601String(),
+      'is_active': isActive,
+    };
+  }
+
+  ElectionSettings copyWith({
+    String? electionTitle,
+    DateTime? startTime,
+    DateTime? endTime,
+    bool? isActive,
+  }) {
+    return ElectionSettings(
+      id: id,
+      electionTitle: electionTitle ?? this.electionTitle,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      isActive: isActive ?? this.isActive,
+    );
+  }
+}

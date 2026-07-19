@@ -15,6 +15,10 @@ import 'screens/admin/candidate_management_screen.dart';
 import 'screens/admin/settings_screen.dart';
 import 'screens/admin/suspicious_activity_screen.dart';
 import 'screens/admin/live_results_screen.dart';
+import 'screens/admin/profile_screen.dart';
+import 'screens/admin/election_initiation_screen.dart';
+import 'screens/admin/election_management_screen.dart';
+import 'screens/admin/vote_log_screen.dart';
 import 'screens/voter/index_verification_screen.dart';
 import 'screens/voter/identity_confirmation_screen.dart';
 import 'screens/voter/otp_verification_screen.dart';
@@ -25,6 +29,12 @@ import 'services/sync_provider.dart';
 import 'core/supabase_config.dart';
 import 'services/push_notification_service.dart';
 import 'services/offline_sync_service.dart';
+import 'services/user_provider.dart';
+import 'services/menu_service.dart';
+import 'services/ip_service.dart';
+import 'widgets/admin_appbar.dart';
+import 'widgets/app_sidebar.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'screens/auth/register_screen.dart';
 
@@ -150,7 +160,7 @@ class InitializationErrorScreen extends StatelessWidget {
                     backgroundColor: Colors.white,
                     foregroundColor: const Color(0xFF003366),
                     padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                   ),
                   child: const Text('ENTER CONFIG MANUALLY', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
@@ -225,23 +235,31 @@ class RavenVoteApp extends ConsumerWidget {
     final themeState = ref.watch(themeProvider);
     ref.watch(syncProvider);
 
-    // Apply system UI settings
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarIconBrightness: Brightness.dark,
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-      ),
-    );
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
+    // System UI logic is now handled in builder to respond to theme changes
     return MaterialApp(
       title: 'RavenVote - UENR E-Voting',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getLightTheme(themeState.primaryColor),
       darkTheme: AppTheme.getDarkTheme(themeState.primaryColor),
       themeMode: themeState.mode,
+      builder: (context, child) {
+        // Ensure system overlays match the current theme
+        SystemChrome.setSystemUIOverlayStyle(
+          SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: themeState.mode == ThemeMode.dark ? Brightness.light : Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarDividerColor: Colors.transparent,
+            systemNavigationBarIconBrightness: themeState.mode == ThemeMode.dark ? Brightness.light : Brightness.dark,
+          ),
+        );
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.0)),
+          child: child!,
+        );
+      },
       initialRoute: '/',
       onGenerateRoute: (settings) {
         if (settings.name == '/voter/confirm') {
@@ -272,6 +290,181 @@ class RavenVoteApp extends ConsumerWidget {
         '/admin/results': (context) => const LiveResultsScreen(),
         '/admin/settings': (context) => const SettingsScreen(),
         '/admin/suspicious': (context) => const SuspiciousActivityScreen(),
+        '/admin/blacklist': (context) => const BlacklistManagementScreen(),
+        '/admin/profile': (context) => const ProfileScreen(),
+        '/admin/initiate': (context) => const ElectionInitiationScreen(),
+        '/admin/elections': (context) => const ElectionManagementScreen(),
+        '/admin/logs': (context) => const VoteLogScreen(),
+      },
+    );
+  }
+}
+
+class BlacklistManagementScreen extends ConsumerStatefulWidget {
+  const BlacklistManagementScreen({super.key});
+
+  @override
+  ConsumerState<BlacklistManagementScreen> createState() => _BlacklistManagementScreenState();
+}
+
+class _BlacklistManagementScreenState extends ConsumerState<BlacklistManagementScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final user = ref.watch(currentUserProvider);
+    final menuItems = ref.watch(menuItemsProvider);
+    final size = MediaQuery.of(context).size;
+    final bool isDesktop = size.width >= 1100;
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pushReplacementNamed(context, '/admin');
+      },
+      child: Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AdminAppBar(title: 'IP Blacklist', user: user),
+        drawer: !isDesktop ? Drawer(
+          width: size.width * 0.66,
+          child: AppSidebar(
+            items: menuItems,
+            currentRoute: '/admin/blacklist',
+            onTap: (route) => MenuService.navigate(context, route, '/admin/blacklist'),
+            isDrawer: true,
+          ),
+        ) : null,
+        body: SafeArea(
+          child: Row(
+            children: [
+              if (isDesktop)
+                AppSidebar(
+                  items: menuItems,
+                  currentRoute: '/admin/blacklist',
+                  onTap: (route) => MenuService.navigate(context, route, '/admin/blacklist'),
+                ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Blacklist Management', style: GoogleFonts.plusJakartaSans(fontSize: 24, fontWeight: FontWeight.bold)),
+                      Text('Manage IP addresses restricted from voting', style: GoogleFonts.inter(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 32),
+                      _buildAddIpCard(),
+                      const SizedBox(height: 32),
+                      _buildBlacklistTable(),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddIpCard() {
+    final ipController = TextEditingController();
+    final reasonController = TextEditingController();
+    final isDesktop = MediaQuery.of(context).size.width >= 1100;
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Manual Blacklist', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              crossAxisAlignment: WrapCrossAlignment.end,
+              children: [
+                SizedBox(
+                  width: isDesktop ? 200 : double.infinity,
+                  child: TextField(
+                    controller: ipController, 
+                    decoration: const InputDecoration(labelText: 'IP Address', border: OutlineInputBorder())
+                  ),
+                ),
+                SizedBox(
+                  width: isDesktop ? 300 : double.infinity,
+                  child: TextField(
+                    controller: reasonController, 
+                    decoration: const InputDecoration(labelText: 'Reason', border: OutlineInputBorder())
+                  ),
+                ),
+                SizedBox(
+                  width: isDesktop ? null : double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      if (ipController.text.isEmpty) return;
+                      final admin = ref.read(currentUserProvider);
+                      if (admin == null) return;
+                      await IpService().blacklistIp(ipController.text.trim(), reasonController.text, admin.id);
+                      setState(() {});
+                    },
+                    child: const Text('BLACKLIST'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlacklistTable() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: IpService().getBlacklistedIps(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final ips = snapshot.data!;
+        
+        return Card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Current Blacklist', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              if (ips.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(48.0),
+                  child: Center(child: Text('No IPs currently blacklisted.')),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: ips.length,
+                  separatorBuilder: (context, index) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final item = ips[index];
+                    return ListTile(
+                      leading: const Icon(Icons.block, color: Colors.red),
+                      title: Text(item['ip'], style: const TextStyle(fontFamily: 'monospace')),
+                      subtitle: Text(item['reason'] ?? 'No reason provided'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        onPressed: () async {
+                          await IpService().unblacklistIp(item['ip']);
+                          setState(() {});
+                        },
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        );
       },
     );
   }

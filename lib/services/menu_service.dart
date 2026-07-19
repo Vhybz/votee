@@ -8,16 +8,24 @@ class MenuService {
   static List<SidebarItem> getMenuItemsForUser(UserAccount user) {
     return [
       SidebarItem(icon: Icons.dashboard, label: 'Dashboard', route: '/admin'),
+      SidebarItem(icon: Icons.rocket_launch_rounded, label: 'Initiate Election', route: '/admin/initiate'),
+      SidebarItem(icon: Icons.list_alt_rounded, label: 'Elections List', route: '/admin/elections'),
       SidebarItem(icon: Icons.admin_panel_settings, label: 'Staff & Admins', route: '/admin/staff'),
       SidebarItem(icon: Icons.people, label: 'Voter Management', route: '/admin/voters'),
       SidebarItem(icon: Icons.how_to_reg, label: 'Candidates', route: '/admin/candidates'),
       SidebarItem(icon: Icons.poll, label: 'Live Results', route: '/admin/results'),
+      SidebarItem(icon: Icons.history_rounded, label: 'Vote Log', route: '/admin/logs'),
       SidebarItem(icon: Icons.security_update_warning, label: 'Suspicious Activity', route: '/admin/suspicious'),
+      SidebarItem(icon: Icons.block, label: 'IP Blacklist', route: '/admin/blacklist'),
+      SidebarItem(icon: Icons.person_outline, label: 'My Profile', route: '/admin/profile'),
       SidebarItem(icon: Icons.settings, label: 'Settings', route: '/admin/settings'),
     ];
   }
 
   static void navigate(BuildContext context, String route, String currentRoute) {
+    if (Scaffold.maybeOf(context)?.isDrawerOpen ?? false) {
+      Navigator.pop(context);
+    }
     if (route == currentRoute) return;
     Navigator.pushReplacementNamed(context, route);
   }
