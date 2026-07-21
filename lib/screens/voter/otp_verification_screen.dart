@@ -23,13 +23,13 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
   @override
   void initState() {
     super.initState();
-    _sendOtp();
+    // OTP is now generated and sent on the server when the index is verified.
+    // No local trigger needed unless resending.
   }
 
-  void _sendOtp() {
-    if (widget.student.phoneNumber.isNotEmpty) {
-      SmsService.sendOtp(widget.student.phoneNumber, widget.student.otp);
-    }
+  void _sendOtp() async {
+    // Trigger server-side OTP resend
+    await ref.read(voterProvider.notifier).resendOtp();
   }
 
   @override
@@ -55,9 +55,9 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
 
     setState(() => _isVerifying = true);
     
-    await Future.delayed(const Duration(milliseconds: 800));
+    final isValid = await ref.read(voterProvider.notifier).verifyOtp(otp);
 
-    if (ref.read(voterProvider.notifier).verifyOtp(otp)) {
+    if (isValid == true) {
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/voter/vote');
       }

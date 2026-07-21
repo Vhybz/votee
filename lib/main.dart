@@ -41,6 +41,22 @@ import 'screens/auth/register_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Custom Error Widget for Production-level crash reporting
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Container(
+      alignment: Alignment.center,
+      color: const Color(0xFF003366),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Text(
+          'UI Rendering Error: ${details.exception}',
+          style: const TextStyle(color: Colors.yellow, fontSize: 12, fontFamily: 'monospace'),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  };
+
   if (kIsWeb) {
     usePathUrlStrategy();
   }
@@ -106,65 +122,67 @@ class InitializationErrorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        color: const Color(0xFF003366), // Primary Blue
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.cloud_off_rounded, color: Colors.white, size: 80),
-                const SizedBox(height: 32),
-                const Text(
-                  'Configuration Missing',
-                  style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-                ),
-                if (errorMessage != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    width: 800,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          errorMessage!.contains('minified') 
-                            ? 'Technical Error (Minified): $errorMessage\n\nThis usually means Supabase failed to initialize on Web. Check your browser console (F12) for the exact error.'
-                            : 'Technical Error: $errorMessage',
-                          style: const TextStyle(color: Colors.yellowAccent, fontSize: 13, fontFamily: 'monospace', fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
-                        ),
-                        if (stackTrace != null) ...[
-                          const Divider(color: Colors.white24),
+      body: SafeArea(
+        child: Container(
+          color: const Color(0xFF003366), // Primary Blue
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.cloud_off_rounded, color: Colors.white, size: 80),
+                  const SizedBox(height: 32),
+                  const Text(
+                    'Configuration Missing',
+                    style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      width: 800,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
+                      ),
+                      child: Column(
+                        children: [
                           Text(
-                            stackTrace!,
-                            style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
-                            maxLines: 15,
-                            overflow: TextOverflow.ellipsis,
+                            errorMessage!.contains('minified') 
+                              ? 'Technical Error (Minified): $errorMessage\n\nThis usually means Supabase failed to initialize on Web. Check your browser console (F12) for the exact error.'
+                              : 'Technical Error: $errorMessage',
+                            style: const TextStyle(color: Colors.yellowAccent, fontSize: 13, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
                           ),
+                          if (stackTrace != null) ...[
+                            const Divider(color: Colors.white24),
+                            Text(
+                              stackTrace!,
+                              style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+                              maxLines: 15,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
+                  ],
+                  const SizedBox(height: 40),
+                  ElevatedButton(
+                    onPressed: () => _showManualConfigDialog(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF003366),
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    ),
+                    child: const Text('ENTER CONFIG MANUALLY', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
-                const SizedBox(height: 40),
-                ElevatedButton(
-                  onPressed: () => _showManualConfigDialog(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF003366),
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                  ),
-                  child: const Text('ENTER CONFIG MANUALLY', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -244,16 +262,19 @@ class RavenVoteApp extends ConsumerWidget {
       themeMode: themeState.mode,
       builder: (context, child) {
         // Ensure system overlays match the current theme
+        final bool isDarkMode = themeState.mode == ThemeMode.dark;
         SystemChrome.setSystemUIOverlayStyle(
           SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness: themeState.mode == ThemeMode.dark ? Brightness.light : Brightness.dark,
-            systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarDividerColor: Colors.transparent,
-            systemNavigationBarIconBrightness: themeState.mode == ThemeMode.dark ? Brightness.light : Brightness.dark,
+            statusBarIconBrightness: isDarkMode ? Brightness.light : Brightness.dark,
+            // Use a solid, theme-appropriate color for the navigation bar to ensure it is always "detected"
+            systemNavigationBarColor: isDarkMode ? const Color(0xFF121212) : Colors.white,
+            systemNavigationBarDividerColor: isDarkMode ? Colors.white10 : Colors.black12,
+            systemNavigationBarIconBrightness: isDarkMode ? Brightness.light : Brightness.dark,
           ),
         );
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        // Explicitly enabling top and bottom overlays ensures the system bars are treated as distinct areas
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom]);
 
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.0)),

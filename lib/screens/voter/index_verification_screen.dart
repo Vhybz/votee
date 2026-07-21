@@ -9,6 +9,8 @@ import '../../services/election_provider.dart';
 import '../../models/election_models.dart';
 import '../../services/ip_service.dart';
 import '../../services/permission_service.dart';
+import '../../widgets/app_footer.dart';
+import '../../widgets/app_error_widget.dart';
 import 'dart:math' as math;
 import 'dart:async';
 
@@ -27,10 +29,15 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
   bool _isBlacklisted = false;
   bool _isCheckingIp = true;
   Timer? _countdownTimer;
-  Duration _timeUntilStart = Duration.zero;
   String? _currentIp;
   static final Set<String> _uniqueIdsVerified = {};
   final Map<String, Color> _positionColors = {};
+  int _logoTapCount = 0;
+  Timer? _logoTapTimer;
+  String? _selectedElectionId;
+
+  // Track all election countdowns
+  Map<String, Duration> _electionCountdowns = {};
 
   @override
   void initState() {
@@ -74,18 +81,24 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
 
   void _startCountdownTimer() {
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      final settings = ref.read(electionSettingsProvider).value;
-      if (settings != null && settings.startTime != null) {
+      final allElections = ref.read(allElectionsProvider).value;
+      if (allElections != null) {
         final now = DateTime.now();
-        if (now.isBefore(settings.startTime!)) {
-          if (mounted) {
-            setState(() {
-              _timeUntilStart = settings.startTime!.difference(now);
-            });
+        final Map<String, Duration> newCountdowns = {};
+        
+        bool hasChanges = false;
+        for (var election in allElections) {
+          if (election.startTime != null && now.isBefore(election.startTime!)) {
+            final diff = election.startTime!.difference(now);
+            newCountdowns[election.id] = diff;
+            hasChanges = true;
           }
-        } else {
-          // If the time has passed, we might want to refresh the UI to show the voting form
-          if (mounted) setState(() {});
+        }
+
+        if (mounted && hasChanges) {
+          setState(() {
+            _electionCountdowns = newCountdowns;
+          });
         }
       }
     });
@@ -94,6 +107,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _logoTapTimer?.cancel();
     _avatarController.dispose();
     _indexController.dispose();
     super.dispose();
@@ -146,8 +160,6 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     final settingsAsync = ref.watch(electionSettingsProvider);
     final positionsAsync = ref.watch(positionsProvider);
     final positions = positionsAsync.value ?? [];
-    
-    final isElectionActive = settingsAsync.value?.isActive ?? false;
 
     // Build the list of floating items
     final List<Map<String, dynamic>> floatingItems = [];
@@ -175,7 +187,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     final List<String> backgroundImages = [
       'assets/images/bgi/img.png',
       'assets/images/bgi/img_1.png',
-      'assets/images/bgi/vote1.jpg',
+      'assets/images/bgi/vote_bg.jpg',
     ];
     
     for (int i = 0; i < bgiCount; i++) {
@@ -187,130 +199,206 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: AnimatedBuilder(
-        animation: _avatarController,
-        builder: (context, _) {
-          final isElectionActive = settingsAsync.value?.isActive ?? false;
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth == 0 || constraints.maxHeight == 0) return const SizedBox();
+          
+          return AnimatedBuilder(
+            animation: _avatarController,
+            builder: (context, _) {
+              // Calculate all positions for this frame
+              final List<Offset> currentOffsets = [];
+              for (int i = 0; i < floatingItems.length; i++) {
+                currentOffsets.add(_calculateAvatarOffset(i, size));
+              }
 
-          // Calculate all positions for this frame
-          final List<Offset> currentOffsets = [];
-          for (int i = 0; i < floatingItems.length; i++) {
-            currentOffsets.add(_calculateAvatarOffset(i, size));
-          }
-
-          return Stack(
-            children: [
-              // 1. Connecting threads (Dashed lines) for candidate groups
-              if (isElectionActive)
-                CustomPaint(
-                  size: size,
-                  painter: _ConnectionPainter(
-                    groups: candidateGroups,
-                    offsets: currentOffsets,
-                    colors: _positionColors,
-                    candidates: candidates,
-                  ),
-                ),
-
-              // 2. The Avatars themselves
-              ...List.generate(
-                floatingItems.length,
-                (index) {
-                  final item = floatingItems[index];
-                  final offset = currentOffsets[index];
-                  final candidate = item['isBgi'] ? null : item['candidate'] as Candidate;
-                  final Color? categoryColor = candidate != null ? _positionColors[candidate.positionId] : null;
-
-                  return Positioned(
-                    left: offset.dx,
-                    top: offset.dy,
-                    child: _buildAvatarWidget(
-                      size, 
-                      candidate, 
-                      positions, 
-                      item['isBgi'] ? item['path'] : null,
-                      categoryColor,
+              return Stack(
+                children: [
+                  // 1. Connecting threads (Dashed lines) for candidate groups
+                  if (candidateGroups.isNotEmpty)
+                    CustomPaint(
+                      size: size,
+                      painter: _ConnectionPainter(
+                        groups: candidateGroups,
+                        offsets: currentOffsets,
+                        colors: _positionColors,
+                        candidates: candidates,
+                      ),
                     ),
-                  );
-                }
-              ),
 
-              // 3. UI Layer (the forms, messages, etc)
-              SafeArea(
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 32),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                      // Top spacing to "bring it down a bit"
-                      const SizedBox(height: 60), 
-                      if (_isCheckingIp)
-                        const Center(child: Padding(
-                          padding: EdgeInsets.all(100.0),
-                          child: CircularProgressIndicator(),
-                        ))
-                      else if (_isBlacklisted)
-                        _buildClosedBanner('ACCESS DENIED', 'Your device IP address has been restricted from participating in this election due to security policy violations.', 'RavenVote')
-                      else
-                        settingsAsync.when(
-                          data: (settings) {
-                            final now = DateTime.now();
-                            final isScheduledButNotStarted = settings.startTime != null && now.isBefore(settings.startTime!);
-                            final isEnded = settings.endTime != null && now.isAfter(settings.endTime!);
-                            
-                            String displayTitle = settings.electionTitle;
-                            if (displayTitle.contains('UENR')) displayTitle = 'RavenVote';
+                  // 2. The Avatars themselves
+                  ...List.generate(
+                    floatingItems.length,
+                    (index) {
+                      final item = floatingItems[index];
+                      final offset = currentOffsets[index];
+                      final candidate = item['isBgi'] ? null : item['candidate'] as Candidate;
+                      final Color? categoryColor = candidate != null ? _positionColors[candidate.positionId] : null;
 
-                            if (!settings.isActive || isScheduledButNotStarted || isEnded) {
-                              String title = 'VOTING DISABLED';
-                              String message = 'The election is currently not active. Please check back later or contact your administrator.';
-                              Widget? extra;
-
-                              if (isScheduledButNotStarted) {
-                                title = 'POLLS NOT OPEN';
-                                message = 'Voting is scheduled to start on ${DateFormat('MMMM dd, yyyy • hh:mm a').format(settings.startTime!)}';
-                                extra = _buildCountdownDisplay();
-                              } else if (isEnded) {
-                                title = 'POLLS CLOSED';
-                                message = 'The voting period for this election has ended.';
-                                extra = _buildResultsSummary(positions, candidates);
-                              }
-
-                              return _buildClosedBanner(title, message, displayTitle, extra: extra);
-                            }
-
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildHeader(displayTitle),
-                                const SizedBox(height: 32),
-                                _buildVerificationForm(),
-                              ],
-                            );
-                          },
-                          loading: () => const Center(child: Padding(
-                            padding: EdgeInsets.all(100.0),
-                            child: CircularProgressIndicator(),
-                          )),
-                          error: (e, s) => Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildHeader('RavenVote'),
-                              const SizedBox(height: 32),
-                              _buildVerificationForm(),
-                            ],
-                          ),
+                      return Positioned(
+                        left: offset.dx,
+                        top: offset.dy,
+                        child: _buildAvatarWidget(
+                          size, 
+                          candidate, 
+                          positions, 
+                          item['isBgi'] ? item['path'] : null,
+                          categoryColor,
                         ),
-                      const SizedBox(height: 60), // Balanced bottom spacing
-                        _buildFooter(),
-                      ],
+                      );
+                    }
+                  ),
+
+                  // 3. UI Layer (the forms, messages, etc)
+                  SafeArea(
+                    child: Center(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 32),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Top spacing
+                            const SizedBox(height: 60), 
+                            if (_isCheckingIp)
+                              const Center(child: Padding(
+                                padding: EdgeInsets.all(100.0),
+                                child: CircularProgressIndicator(),
+                              ))
+                            else if (_isBlacklisted)
+                              _buildClosedBanner('ACCESS DENIED', 'Your device IP address has been restricted from participating in this election due to security policy violations.', 'RavenVote')
+                            else
+                              _buildSettingsAdaptiveContent(settingsAsync, positions, candidates),
+                            const SizedBox(height: 60),
+                            const AppFooter(),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSettingsAdaptiveContent(
+    AsyncValue<ElectionSettings> settingsAsync,
+    List<Position> positions,
+    List<Candidate> candidates,
+  ) {
+    return settingsAsync.when(
+      data: (mainSettings) {
+        final now = DateTime.now();
+        final allElectionsAsync = ref.watch(allElectionsProvider);
+        
+        return allElectionsAsync.when(
+          data: (allElections) {
+            // Categorize elections
+            final ongoingElections = allElections.where((e) {
+              final isStarted = e.startTime == null || now.isAfter(e.startTime!);
+              final isNotEnded = e.endTime == null || now.isBefore(e.endTime!);
+              return e.isActive && isStarted && isNotEnded;
+            }).toList();
+
+            final upcomingElections = allElections.where((e) => e.startTime != null && now.isBefore(e.startTime!)).toList();
+
+            // If an election is selected, show its form
+            if (_selectedElectionId != null) {
+              final selected = allElections.firstWhere((e) => e.id == _selectedElectionId, orElse: () => mainSettings);
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildHeader(selected.electionTitle.contains('UENR') ? 'RavenVote' : selected.electionTitle),
+                  const SizedBox(height: 32),
+                  _buildVerificationForm(
+                    onBack: (ongoingElections.length + upcomingElections.length) > 1 
+                      ? () => setState(() => _selectedElectionId = null) 
+                      : null,
+                  ),
+                ],
+              );
+            }
+
+            // If there's exactly one ongoing election and no upcoming ones, show it directly
+            if (ongoingElections.length == 1 && upcomingElections.isEmpty) {
+              final e = ongoingElections.first;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildHeader(e.electionTitle.contains('UENR') ? 'RavenVote' : e.electionTitle),
+                  const SizedBox(height: 32),
+                  _buildVerificationForm(),
+                ],
+              );
+            }
+
+            // Otherwise, show the Election portal (Mixed list)
+            if (ongoingElections.isNotEmpty || upcomingElections.isNotEmpty) {
+              return _buildElectionPortal(ongoingElections, upcomingElections, positions, candidates);
+            }
+
+            // Fallback for single election closed banner or inactive state
+            final isScheduledButNotStarted = mainSettings.startTime != null && now.isBefore(mainSettings.startTime!);
+            final isEnded = mainSettings.endTime != null && now.isAfter(mainSettings.endTime!);
+            
+            String title = 'VOTING DISABLED';
+            String message = 'The election is currently not active. Please check back later or contact your administrator.';
+            Widget? extra;
+
+            if (isScheduledButNotStarted) {
+              title = 'POLLS NOT OPEN';
+              message = 'Voting is scheduled to start on ${DateFormat('MMMM dd, yyyy • hh:mm a').format(mainSettings.startTime!)}';
+              extra = _buildCountdownDisplay(mainSettings.id);
+            } else if (isEnded) {
+              title = 'POLLS CLOSED';
+              message = 'The voting period for this election has ended.';
+              extra = _buildResultsSummary(positions, candidates);
+            }
+
+            final displayTitle = mainSettings.electionTitle.contains('UENR') ? 'RavenVote' : mainSettings.electionTitle;
+            final electionPositions = positions.where((p) => p.electionId == mainSettings.id).map((p) => p.id).toList();
+            final electionCandidates = candidates.where((c) => electionPositions.contains(c.positionId)).toList();
+
+            return _buildClosedBanner(title, message, displayTitle, aspirants: electionCandidates, extra: extra);
+          },
+          loading: () => Column(
+            children: [
+              _buildHeader(mainSettings.electionTitle.contains('UENR') ? 'RavenVote' : mainSettings.electionTitle),
+              const SizedBox(height: 48),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Synchronizing Schedule...', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+          error: (e, _) => Column(
+            children: [
+              _buildHeader(mainSettings.electionTitle.contains('UENR') ? 'RavenVote' : mainSettings.electionTitle),
+              const SizedBox(height: 32),
+              const Text('Error loading schedule.', style: TextStyle(color: Colors.redAccent)),
+            ],
+          ),
+        );
+      },
+      loading: () => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildHeader('RavenVote'),
+          const SizedBox(height: 60),
+          _buildVerificationForm(isLoading: true),
+        ],
+      ),
+      error: (e, s) => AppErrorWidget(
+        error: e,
+        isExpandable: false,
+        onRetry: () {
+          ref.invalidate(electionSettingsProvider);
+          ref.invalidate(allElectionsProvider);
+          ref.invalidate(candidatesProvider);
+          ref.invalidate(positionsProvider);
         },
       ),
     );
@@ -411,7 +499,20 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
-                onLongPress: () => Navigator.pushNamed(context, '/admin/login'),
+                onTap: () {
+                  setState(() {
+                    _logoTapCount++;
+                    _logoTapTimer?.cancel();
+                    _logoTapTimer = Timer(const Duration(seconds: 2), () {
+                      _logoTapCount = 0;
+                    });
+                    if (_logoTapCount >= 5) {
+                      _logoTapCount = 0;
+                      _logoTapTimer?.cancel();
+                      Navigator.pushNamed(context, '/admin/login');
+                    }
+                  });
+                },
                 child: CircleAvatar(
                   radius: isMobile ? 30 : 36,
                   backgroundColor: Colors.white,
@@ -460,11 +561,10 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     );
   }
 
-  Widget _buildClosedBanner(String title, String message, String electionTitle, {Widget? extra}) {
+  Widget _buildClosedBanner(String title, String message, String electionTitle, {List<Candidate>? aspirants, Widget? extra}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final size = MediaQuery.of(context).size;
-    final bool isMobile = size.width < 600;
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
     
     return Center(
       child: Container(
@@ -486,7 +586,35 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildElectionInfo(electionTitle),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+            if (aspirants != null && aspirants.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: -12, // Overlapping effect
+                  children: aspirants.take(8).map((c) => Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: theme.cardTheme.color ?? Colors.white, width: 2.5),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: (c.imageUrl != null && c.imageUrl!.isNotEmpty) 
+                          ? NetworkImage(c.imageUrl!) 
+                          : null,
+                      child: (c.imageUrl == null || c.imageUrl!.isEmpty)
+                          ? const Icon(Icons.person, size: 24, color: Colors.grey)
+                          : null,
+                    ),
+                  )).toList(),
+                ),
+              ),
+            const SizedBox(height: 8),
             // Pulsing Lock Icon for "Live Security" feel
             TweenAnimationBuilder<double>(
               tween: Tween(begin: 0.9, end: 1.1),
@@ -547,13 +675,29 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
 
     return Column(
       children: [
-        CircleAvatar(
-          radius: 30,
-          backgroundColor: Colors.white,
-          child: ClipOval(
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Image.asset('assets/logo/logo.png', fit: BoxFit.contain),
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _logoTapCount++;
+              _logoTapTimer?.cancel();
+              _logoTapTimer = Timer(const Duration(seconds: 2), () {
+                _logoTapCount = 0;
+              });
+              if (_logoTapCount >= 5) {
+                _logoTapCount = 0;
+                _logoTapTimer?.cancel();
+                Navigator.pushNamed(context, '/admin/login');
+              }
+            });
+          },
+          child: CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.white,
+            child: ClipOval(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Image.asset('assets/logo/logo.png', fit: BoxFit.contain),
+              ),
             ),
           ),
         ),
@@ -571,21 +715,202 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     );
   }
 
-  Widget _buildCountdownDisplay() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.redAccent.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.1)),
+  Widget _buildCountdownDisplay(String electionId) {
+    final duration = _electionCountdowns[electionId] ?? Duration.zero;
+    
+    return Column(
+      children: [
+        Text(
+          'COMMENCING IN',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: Colors.grey,
+            letterSpacing: 2.0,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.03),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildCountdownItem(duration.inDays, 'DAYS'),
+                _buildCountdownSeparator(),
+                _buildCountdownItem(duration.inHours % 24, 'HOURS'),
+                _buildCountdownSeparator(),
+                _buildCountdownItem(duration.inMinutes % 60, 'MINS'),
+                _buildCountdownSeparator(),
+                _buildCountdownItem(duration.inSeconds % 60, 'SECS'),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCountdownSeparator() {
+    return Text(
+      ':',
+      style: GoogleFonts.plusJakartaSans(
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+        color: Colors.grey.withValues(alpha: 0.3),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    );
+  }
+
+  Widget _buildElectionPortal(List<ElectionSettings> ongoing, List<ElectionSettings> upcoming, List<Position> allPositions, List<Candidate> allCandidates) {
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
+    
+    return Center(
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 600,
+          maxHeight: size.height * 0.8,
+        ),
+        decoration: BoxDecoration(
+          color: theme.cardTheme.color,
+          borderRadius: BorderRadius.circular(AppRadius.l),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3), 
+              blurRadius: 20, 
+              offset: const Offset(0, 10)
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.l),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.l),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildElectionInfo('Voting Portal'),
+                const SizedBox(height: 32),
+
+                if (ongoing.isNotEmpty) ...[
+                  _buildPortalSectionHeader('LIVE NOW', Colors.green),
+                  const SizedBox(height: 16),
+                  ...ongoing.map((e) => _buildElectionPortalCard(e, allPositions, allCandidates, isLive: true)),
+                ],
+
+                if (upcoming.isNotEmpty) ...[
+                  if (ongoing.isNotEmpty) const SizedBox(height: 32),
+                  _buildPortalSectionHeader('COMING SOON', Colors.orange),
+                  const SizedBox(height: 16),
+                  ...upcoming.map((e) => _buildElectionPortalCard(e, allPositions, allCandidates, isLive: false)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPortalSectionHeader(String title, Color color) {
+    return Row(
+      children: [
+        Container(width: 4, height: 16, color: color),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 12, 
+            fontWeight: FontWeight.w800, 
+            color: color,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(width: 8),
+        const Expanded(child: Divider()),
+      ],
+    );
+  }
+
+  Widget _buildElectionPortalCard(ElectionSettings e, List<Position> allPositions, List<Candidate> allCandidates, {required bool isLive}) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    final electionPositions = allPositions.where((p) => p.electionId == e.id).map((p) => p.id).toList();
+    final electionCandidates = allCandidates.where((c) => electionPositions.contains(c.positionId)).toList();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.03) : Colors.black.withValues(alpha: 0.02),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isLive ? Colors.green.withValues(alpha: 0.2) : Colors.white10,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildCountdownItem(_timeUntilStart.inDays, 'DAYS'),
-          _buildCountdownItem(_timeUntilStart.inHours % 24, 'HRS'),
-          _buildCountdownItem(_timeUntilStart.inMinutes % 60, 'MINS'),
-          _buildCountdownItem(_timeUntilStart.inSeconds % 60, 'SECS'),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      e.electionTitle,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${electionPositions.length} Positions • ${electionCandidates.length} Aspirants',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              if (isLive)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('LIVE', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 9)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (isLive)
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: () => setState(() => _selectedElectionId = e.id),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('ENTER ELECTION', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+              ),
+            )
+          else
+            _buildCountdownDisplay(e.id),
         ],
       ),
     );
@@ -593,21 +918,38 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
 
   Widget _buildCountdownItem(int value, String label) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          value.toString().padLeft(2, '0'),
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.redAccent,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Text(
+            value.toString().padLeft(2, '0'),
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryBlue,
+            ),
           ),
         ),
+        const SizedBox(height: 8),
         Text(
           label,
           style: GoogleFonts.inter(
-            fontSize: 9,
+            fontSize: 8,
             fontWeight: FontWeight.bold,
             color: Colors.grey,
+            letterSpacing: 1.0,
           ),
         ),
       ],
@@ -720,7 +1062,7 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
     );
   }
 
-  Widget _buildVerificationForm() {
+  Widget _buildVerificationForm({bool isLoading = false, VoidCallback? onBack}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final size = MediaQuery.of(context).size;
@@ -731,6 +1073,16 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          if (onBack != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 14),
+                label: const Text('BACK TO PORTAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                style: TextButton.styleFrom(foregroundColor: Colors.grey),
+              ),
+            ),
           Text(
             'Cast Your Vote',
             style: GoogleFonts.plusJakartaSans(
@@ -753,40 +1105,48 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isMobile ? 16 : 24)),
             child: Padding(
               padding: EdgeInsets.all(isMobile ? 20 : 32),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _indexController,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.deny(RegExp(r'\s')),
+              child: isLoading 
+                ? const Column(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Connecting to Secure Vault...', style: TextStyle(fontSize: 12, color: Colors.grey)),
                     ],
-                    decoration: const InputDecoration(
-                      labelText: 'Index Number',
-                      hintText: 'e.g., 20000000',
-                      prefixIcon: Icon(Icons.badge_outlined),
-                    ),
-                  ),
-                  SizedBox(height: isMobile ? 24 : 32),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: () => _handleVerification(_indexController.text.trim()),
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Text(
-                        'VERIFY IDENTITY',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
-                          fontSize: 16,
+                  )
+                : Column(
+                    children: [
+                      TextField(
+                        controller: _indexController,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.deny(RegExp(r'\s')),
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Index Number',
+                          hintText: 'e.g., 20000000',
+                          prefixIcon: Icon(Icons.badge_outlined),
                         ),
                       ),
-                    ),
+                      SizedBox(height: isMobile ? 24 : 32),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: () => _handleVerification(_indexController.text.trim()),
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: Text(
+                            'VERIFY IDENTITY',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
             ),
           ),
         ],
@@ -869,35 +1229,6 @@ class _IndexVerificationScreenState extends ConsumerState<IndexVerificationScree
       ),
     );
   }
-
-  Widget _buildFooter() {
-    final theme = Theme.of(context);
-    return Center(
-      child: Column(
-        children: [
-          Icon(Icons.security, color: theme.brightness == Brightness.dark ? Colors.white38 : AppColors.textLight, size: 24),
-          const SizedBox(height: 8),
-          Text(
-            'Secure Multi-Factor Authentication Active',
-            style: TextStyle(
-              color: theme.brightness == Brightness.dark ? Colors.white38 : AppColors.textLight,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Powered by TechRaven LTD',
-            style: TextStyle(
-              color: theme.brightness == Brightness.dark ? Colors.white10 : Colors.grey.withValues(alpha: 0.2),
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.0,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _ConnectionPainter extends CustomPainter {
@@ -921,8 +1252,8 @@ class _ConnectionPainter extends CustomPainter {
     for (var entry in groups.entries) {
       final color = colors[entry.key] ?? Colors.white;
       final paint = Paint()
-        ..color = color.withValues(alpha: 0.3)
-        ..strokeWidth = 1.5
+        ..color = color.withValues(alpha: 0.4)
+        ..strokeWidth = 2.0
         ..style = PaintingStyle.stroke;
 
       final indices = entry.value;

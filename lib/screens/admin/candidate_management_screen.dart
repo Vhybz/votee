@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import '../../widgets/app_footer.dart';
 import '../../core/constants.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/admin_appbar.dart';
@@ -12,6 +14,7 @@ import '../../services/election_provider.dart';
 import '../../services/user_provider.dart';
 import '../../models/election_models.dart';
 import '../../core/uuid_utils.dart';
+import '../../widgets/app_error_widget.dart';
 
 class CandidateManagementScreen extends ConsumerStatefulWidget {
   const CandidateManagementScreen({super.key});
@@ -101,9 +104,13 @@ class _CandidateManagementScreenState extends ConsumerState<CandidateManagementS
                               },
                             ),
                           ),
-                          error: (e, _) => Center(child: Text('Error: $e')),
+                          error: (e, s) => AppErrorWidget(
+                            error: e, 
+                            onRetry: () => ref.invalidate(positionsProvider),
+                          ),
                         ),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),
@@ -295,7 +302,9 @@ class _CandidateManagementScreenState extends ConsumerState<CandidateManagementS
                 const SizedBox(height: 16),
                 TextField(
                   controller: nameController, 
-                  inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'[0-9]'))],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\-]')),
+                  ],
                   decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 16),
@@ -307,12 +316,38 @@ class _CandidateManagementScreenState extends ConsumerState<CandidateManagementS
                   onTap: () async {
                     final ImagePicker picker = ImagePicker();
                     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-                    if (image != null) {
-                      final bytes = await image.readAsBytes();
-                      setDialogState(() {
-                        pickedImage = image;
-                        imageBytes = bytes;
-                      });
+                    if (image != null && context.mounted) {
+                      final theme = Theme.of(context);
+                      final primaryColor = theme.colorScheme.primary;
+                      final croppedFile = await ImageCropper().cropImage(
+                        sourcePath: image.path,
+                        uiSettings: [
+                          AndroidUiSettings(
+                            toolbarTitle: 'Crop Aspirant Image',
+                            toolbarColor: primaryColor,
+                            toolbarWidgetColor: Colors.white,
+                            initAspectRatio: CropAspectRatioPreset.square,
+                            lockAspectRatio: true,
+                            aspectRatioPresets: [CropAspectRatioPreset.square],
+                          ),
+                          IOSUiSettings(
+                            title: 'Crop Aspirant Image',
+                            aspectRatioPresets: [CropAspectRatioPreset.square],
+                          ),
+                          if (context.mounted)
+                            WebUiSettings(
+                              context: context,
+                            ),
+                        ],
+                      );
+
+                      if (croppedFile != null) {
+                        final bytes = await croppedFile.readAsBytes();
+                        setDialogState(() {
+                          pickedImage = XFile(croppedFile.path);
+                          imageBytes = bytes;
+                        });
+                      }
                     }
                   },
                   child: Container(
@@ -350,7 +385,7 @@ class _CandidateManagementScreenState extends ConsumerState<CandidateManagementS
                 final candidateId = UuidUtils.generate();
                 String? imageUrl;
                 
-                if (imageBytes != null) {
+                if (imageBytes != null && pickedImage != null) {
                   imageUrl = await ref.read(electionServiceProvider).uploadCandidateImage(
                     candidateId, 
                     imageBytes!,
@@ -572,7 +607,9 @@ class _CandidateManagementScreenState extends ConsumerState<CandidateManagementS
                 const SizedBox(height: 16),
                 TextField(
                   controller: nameController, 
-                  inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'[0-9]'))],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\-]')),
+                  ],
                   decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 16),
@@ -584,12 +621,38 @@ class _CandidateManagementScreenState extends ConsumerState<CandidateManagementS
                   onTap: () async {
                     final ImagePicker picker = ImagePicker();
                     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-                    if (image != null) {
-                      final bytes = await image.readAsBytes();
-                      setDialogState(() {
-                        pickedImage = image;
-                        imageBytes = bytes;
-                      });
+                    if (image != null && context.mounted) {
+                      final theme = Theme.of(context);
+                      final primaryColor = theme.colorScheme.primary;
+                      final croppedFile = await ImageCropper().cropImage(
+                        sourcePath: image.path,
+                        uiSettings: [
+                          AndroidUiSettings(
+                            toolbarTitle: 'Crop Aspirant Image',
+                            toolbarColor: primaryColor,
+                            toolbarWidgetColor: Colors.white,
+                            initAspectRatio: CropAspectRatioPreset.square,
+                            lockAspectRatio: true,
+                            aspectRatioPresets: [CropAspectRatioPreset.square],
+                          ),
+                          IOSUiSettings(
+                            title: 'Crop Aspirant Image',
+                            aspectRatioPresets: [CropAspectRatioPreset.square],
+                          ),
+                          if (context.mounted)
+                            WebUiSettings(
+                              context: context,
+                            ),
+                        ],
+                      );
+
+                      if (croppedFile != null) {
+                        final bytes = await croppedFile.readAsBytes();
+                        setDialogState(() {
+                          pickedImage = XFile(croppedFile.path);
+                          imageBytes = bytes;
+                        });
+                      }
                     }
                   },
                   child: Container(
@@ -631,7 +694,7 @@ class _CandidateManagementScreenState extends ConsumerState<CandidateManagementS
                 
                 String? imageUrl = candidate.imageUrl;
                 
-                if (imageBytes != null) {
+                if (imageBytes != null && pickedImage != null) {
                   imageUrl = await ref.read(electionServiceProvider).uploadCandidateImage(
                     candidate.id, 
                     imageBytes!,

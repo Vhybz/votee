@@ -5,18 +5,28 @@ import 'package:flutter/foundation.dart';
 class SupabaseConfig {
   static SupabaseClient? _adminClient;
   
+  static const String _url = String.fromEnvironment('SUPABASE_URL');
+  static const String _anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  static const String _serviceKey = String.fromEnvironment('SUPABASE_SERVICE_ROLE_KEY');
+
   // Return a dummy client if not initialized to prevent crashes in UI-only mode
   static SupabaseClient get adminClient => _adminClient ?? SupabaseClient('https://mock.supabase.co', 'mock-key');
 
   static Future<void> initialize() async {
-    String url = '';
-    String anonKey = '';
     try {
-      url = dotenv.env['SUPABASE_URL'] ?? '';
-      anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+      String url = _url;
+      String anonKey = _anonKey;
+      String serviceKey = _serviceKey;
+
+      // Fallback to .env in debug mode only (assuming developer has it locally but not in assets)
+      if (kDebugMode && (url.isEmpty || anonKey.isEmpty)) {
+        url = dotenv.env['SUPABASE_URL'] ?? '';
+        anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+        serviceKey = dotenv.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
+      }
 
       if (url.isEmpty || anonKey.isEmpty) {
-        debugPrint('SupabaseConfig: Missing credentials. Skipping real initialization for UI-only mode.');
+        debugPrint('SupabaseConfig: Missing credentials. Verify --dart-define or .env');
         return;
       }
 
@@ -28,15 +38,14 @@ class SupabaseConfig {
         ),
       );
       
-      final serviceKey = dotenv.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
       if (serviceKey.isNotEmpty) {
         _adminClient = SupabaseClient(url.trim(), serviceKey);
+        debugPrint('SYSTEM STATUS: Admin Client Initialized.');
       }
       
       debugPrint('Supabase initialized successfully.');
     } catch (e) {
       debugPrint('Supabase Init Warning: $e');
-      // In UI-only mode, we swallow this error
     }
   }
 

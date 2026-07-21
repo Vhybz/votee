@@ -7,6 +7,7 @@ import '../../widgets/app_sidebar.dart';
 import '../../widgets/admin_appbar.dart';
 import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
+import '../../widgets/app_footer.dart';
 import '../../models/user_model.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -143,6 +144,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                           const SizedBox(height: 32),
                           _buildProfileCard(user, theme),
+                          const AppFooter(),
                         ],
                       ),
                     ),
@@ -196,12 +198,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               controller: _firstNameController,
               label: 'First Name',
               icon: Icons.person_outline,
+              formatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\-]')),
+              ],
             ),
             const SizedBox(height: 24),
             _buildTextField(
               controller: _surnameController,
               label: 'Surname',
               icon: Icons.person_outline,
+              formatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\-]')),
+              ],
             ),
             const SizedBox(height: 24),
             // Rank is disabled
@@ -251,9 +259,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    List<TextInputFormatter>? formatters,
   }) {
     return TextField(
       controller: controller,
+      inputFormatters: formatters,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),

@@ -7,7 +7,7 @@ class Student {
   final String phoneNumber;
   final String academicSchool;
   final String program;
-  final String otp;
+  final String? otp; // Made optional to prevent leakage
   final bool hasVoted;
   final DateTime? votedAt;
 
@@ -20,7 +20,7 @@ class Student {
     required this.phoneNumber,
     required this.academicSchool,
     required this.program,
-    required this.otp,
+    this.otp,
     this.hasVoted = false,
     this.votedAt,
   });
@@ -35,7 +35,7 @@ class Student {
       phoneNumber: json['phone_number']?.toString() ?? '',
       academicSchool: json['academic_school']?.toString() ?? '',
       program: json['program']?.toString() ?? '',
-      otp: json['otp']?.toString() ?? '',
+      otp: json['otp']?.toString(), // Might be null if RLS or SELECT excludes it
       hasVoted: json['has_voted'] == true,
       votedAt: json['voted_at'] != null ? DateTime.tryParse(json['voted_at'].toString()) : null,
     );
@@ -213,23 +213,33 @@ class ElectionStats {
   });
 }
 
-class AnomalyAlert {
+enum AnomalySeverity { high, medium, low }
+
+class Anomaly {
   final String id;
   final String title;
   final String details;
-  final String time;
   final AnomalySeverity severity;
+  final String? ipAddress;
+  final DateTime createdAt;
 
-  AnomalyAlert({
+  Anomaly({
     required this.id,
     required this.title,
     required this.details,
-    required this.time,
     required this.severity,
+    this.ipAddress,
+    required this.createdAt,
   });
-}
 
-enum AnomalySeverity { high, medium, low }
+  String get time {
+    final diff = DateTime.now().difference(createdAt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} mins ago';
+    if (diff.inHours < 24) return '${diff.inHours} hours ago';
+    return '${diff.inDays} days ago';
+  }
+}
 
 class ElectionSettings {
   final String id;

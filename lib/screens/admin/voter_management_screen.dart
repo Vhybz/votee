@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import '../../widgets/app_footer.dart';
 import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -14,6 +15,7 @@ import '../../services/user_provider.dart';
 import '../../services/election_provider.dart';
 import '../../models/election_models.dart';
 import '../../core/uuid_utils.dart';
+import '../../widgets/app_error_widget.dart';
 
 class VoterManagementScreen extends ConsumerStatefulWidget {
   const VoterManagementScreen({super.key});
@@ -234,7 +236,9 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildFormTextField(nameController, 'Full Name', Icons.person_outline, [FilteringTextInputFormatter.deny(RegExp(r'[0-9]'))]),
+                _buildFormTextField(nameController, 'Full Name', Icons.person_outline, [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\-]')),
+                ]),
                 const SizedBox(height: 16),
                 _buildFormTextField(indexController, 'Index Number', Icons.badge_outlined, [FilteringTextInputFormatter.deny(RegExp(r'\s'))]),
                 const SizedBox(height: 16),
@@ -347,9 +351,13 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
                             enabled: true,
                             child: _buildHierarchicalVoterList(theme, _fakeVoters),
                           ),
-                          error: (err, stack) => Center(child: Text('Error: $err')),
+                          error: (err, stack) => AppErrorWidget(
+                            error: err, 
+                            onRetry: () => ref.invalidate(votersListProvider),
+                          ),
                         ),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),
@@ -491,75 +499,77 @@ class _VoterManagementScreenState extends ConsumerState<VoterManagementScreen> {
 
     return ListView(
       children: hierarchy.entries.map((schoolEntry) {
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Material(
             color: isDark ? Colors.white.withValues(alpha: 0.02) : Colors.white,
-            borderRadius: BorderRadius.zero,
-            border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
-          ),
-          child: ExpansionTile(
-            initiallyExpanded: _searchQuery.isNotEmpty,
-            shape: const RoundedRectangleBorder(side: BorderSide.none),
-            collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
-            leading: Icon(Icons.account_balance_rounded, color: isDark ? Colors.white38 : primaryColor, size: 20),
-            title: Text(schoolEntry.key, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 15)),
-            subtitle: Text('${_countStudents(schoolEntry.value)} Students', style: TextStyle(color: isDark ? Colors.white24 : Colors.grey, fontSize: 11)),
-            children: schoolEntry.value.entries.map((programEntry) {
-              return Padding(
-                padding: const EdgeInsets.only(left: 8.0),
-                child: ExpansionTile(
-                  initiallyExpanded: _searchQuery.isNotEmpty,
-                  shape: const RoundedRectangleBorder(side: BorderSide.none),
-                  leading: const Icon(Icons.school_outlined, size: 18),
-                  title: Text(programEntry.key, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  children: programEntry.value.entries.map((levelEntry) {
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: ExpansionTile(
-                        initiallyExpanded: _searchQuery.isNotEmpty,
-                        leading: const Icon(Icons.layers_outlined, size: 16),
-                        title: Text('Level ${levelEntry.key}', style: const TextStyle(fontSize: 13)),
-                        children: levelEntry.value.entries.map((classEntry) {
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: ExpansionTile(
-                              initiallyExpanded: _searchQuery.isNotEmpty,
-                              leading: const Icon(Icons.class_outlined, size: 14),
-                              title: Text('Group ${classEntry.key}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              children: classEntry.value.map((student) {
-                                return ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  leading: CircleAvatar(
-                                    radius: 14,
-                                    backgroundColor: (isDark ? Colors.white : primaryColor).withValues(alpha: 0.1),
-                                    child: Icon(Icons.person, color: isDark ? Colors.white38 : primaryColor, size: 14),
-                                  ),
-                                  title: Text(student.fullName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                  subtitle: Text('ID: ${student.indexNumber}', style: const TextStyle(fontSize: 10, fontFamily: 'monospace'), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _buildStatusChip(student.hasVoted),
-                                      IconButton(onPressed: () {}, icon: const Icon(Icons.edit_note_rounded, size: 18), visualDensity: VisualDensity.compact),
-                                      IconButton(
-                                        onPressed: () => _handleDeleteStudent(student), 
-                                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18), 
-                                        visualDensity: VisualDensity.compact
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              );
-            }).toList(),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+              side: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+            ),
+            child: ExpansionTile(
+              initiallyExpanded: _searchQuery.isNotEmpty,
+              shape: const RoundedRectangleBorder(side: BorderSide.none),
+              collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
+              leading: Icon(Icons.account_balance_rounded, color: isDark ? Colors.white38 : primaryColor, size: 20),
+              title: Text(schoolEntry.key, style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 15)),
+              subtitle: Text('${_countStudents(schoolEntry.value)} Students', style: TextStyle(color: isDark ? Colors.white24 : Colors.grey, fontSize: 11)),
+              children: schoolEntry.value.entries.map((programEntry) {
+                return Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
+                  child: ExpansionTile(
+                    initiallyExpanded: _searchQuery.isNotEmpty,
+                    shape: const RoundedRectangleBorder(side: BorderSide.none),
+                    leading: const Icon(Icons.school_outlined, size: 18),
+                    title: Text(programEntry.key, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    children: programEntry.value.entries.map((levelEntry) {
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 8.0),
+                        child: ExpansionTile(
+                          initiallyExpanded: _searchQuery.isNotEmpty,
+                          leading: const Icon(Icons.layers_outlined, size: 16),
+                          title: Text('Level ${levelEntry.key}', style: const TextStyle(fontSize: 13)),
+                          children: levelEntry.value.entries.map((classEntry) {
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: ExpansionTile(
+                                initiallyExpanded: _searchQuery.isNotEmpty,
+                                leading: const Icon(Icons.class_outlined, size: 14),
+                                title: Text('Group ${classEntry.key}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                children: classEntry.value.map((student) {
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    leading: CircleAvatar(
+                                      radius: 14,
+                                      backgroundColor: (isDark ? Colors.white : primaryColor).withValues(alpha: 0.1),
+                                      child: Icon(Icons.person, color: isDark ? Colors.white38 : primaryColor, size: 14),
+                                    ),
+                                    title: Text(student.fullName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    subtitle: Text('ID: ${student.indexNumber}', style: const TextStyle(fontSize: 10, fontFamily: 'monospace'), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildStatusChip(student.hasVoted),
+                                        IconButton(onPressed: () {}, icon: const Icon(Icons.edit_note_rounded, size: 18), visualDensity: VisualDensity.compact),
+                                        IconButton(
+                                          onPressed: () => _handleDeleteStudent(student), 
+                                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18), 
+                                          visualDensity: VisualDensity.compact
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
         );
       }).toList(),

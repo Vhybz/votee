@@ -12,7 +12,7 @@ class ElectionService {
   Future<Student?> getStudentByIndex(String indexNumber) async {
     final response = await _client
         .from('students')
-        .select()
+        .select('id, index_number, full_name, level, class_name, phone_number, academic_school, program, has_voted, voted_at') // Explicitly exclude OTP
         .eq('index_number', indexNumber)
         .maybeSingle();
     
@@ -114,6 +114,32 @@ class ElectionService {
 
   Future<void> deleteStudent(String id) async {
     await _client.from('students').delete().eq('id', id);
+  }
+
+  /// Verifies OTP on the server via Edge Function to prevent client-side leakage.
+  Future<bool> verifyOtpOnServer(String indexNumber, String otp) async {
+    try {
+      final response = await _client.functions.invoke(
+        'verify-otp',
+        body: {'index_number': indexNumber, 'otp': otp},
+      );
+      return response.status == 200;
+    } catch (e) {
+      debugPrint('OTP Server Verification Failed: $e');
+      return false;
+    }
+  }
+
+  /// Triggers server-side OTP generation and SMS delivery via Edge Function.
+  Future<void> generateAndSendOtp(String indexNumber) async {
+    try {
+      await _client.functions.invoke(
+        'generate-otp',
+        body: {'index_number': indexNumber},
+      );
+    } catch (e) {
+      debugPrint('OTP Generation/Sending Failed: $e');
+    }
   }
 
   Future<void> reportAnomaly({
@@ -233,33 +259,28 @@ class ElectionService {
         });
   }
 
-  Future<List<AnomalyAlert>> getAnomalies() async {
+  Stream<List<ElectionSettings>> watchAllElections() {
+    return _client
+        .from('settings')
+        .stream(primaryKey: ['id'])
+        .order('updated_at', ascending: false)
+        .map((data) => data.map((json) => ElectionSettings.fromJson(json)).toList());
+  }
+
+  Future<List<Anomaly>> getAnomalies() async {
     final response = await _client
         .from('anomalies')
         .select()
-        .order('id', ascending: false);
+        .order('created_at', ascending: false);
     
     return (response as List).map((json) {
-      // Convert created_at to a relative time string (e.g., "5 mins ago")
-      final createdAt = json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now();
-      final diff = DateTime.now().difference(createdAt);
-      String timeStr;
-      if (diff.inMinutes < 1) {
-        timeStr = 'Just now';
-      } else if (diff.inMinutes < 60) {
-        timeStr = '${diff.inMinutes} mins ago';
-      } else if (diff.inHours < 24) {
-        timeStr = '${diff.inHours} hours ago';
-      } else {
-        timeStr = '${diff.inDays} days ago';
-      }
-
-      return AnomalyAlert(
+      return Anomaly(
         id: json['id'].toString(),
         title: json['title'].toString(),
         details: json['details'].toString(),
-        time: timeStr,
         severity: AnomalySeverity.values.byName(json['severity'] ?? 'low'),
+        ipAddress: json['ip_address']?.toString(),
+        createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
       );
     }).toList();
   }
@@ -269,6 +290,14 @@ class ElectionService {
         .from('candidates')
         .stream(primaryKey: ['id'])
         .map((data) => data.map((json) => Candidate.fromJson(json)).toList());
+  }
+
+  Stream<List<Position>> watchPositions() {
+    return _client
+        .from('positions')
+        .stream(primaryKey: ['id'])
+        .order('order', ascending: true)
+        .map((data) => data.map((json) => Position.fromJson(json)).toList());
   }
 
   Future<ElectionStats> getElectionStats() async {

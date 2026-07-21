@@ -119,33 +119,34 @@ class AppSidebar extends ConsumerWidget {
 
   Widget _buildMenuItem(BuildContext context, SidebarItem item, bool isSelected, ThemeData theme, bool isExpanded) {
     final primaryColor = theme.colorScheme.primary;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
         color: isSelected ? Colors.white10 : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        contentPadding: EdgeInsets.symmetric(horizontal: isExpanded ? 16 : 12),
-        leading: Icon(
-          item.icon, 
-          color: isSelected ? (primaryColor == Colors.black ? Colors.white : primaryColor) : Colors.white60,
-          size: 24,
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          contentPadding: EdgeInsets.symmetric(horizontal: isExpanded ? 16 : 12),
+          leading: Icon(
+            item.icon, 
+            color: isSelected ? (primaryColor == Colors.black ? Colors.white : primaryColor) : Colors.white60,
+            size: 24,
+          ),
+          title: isExpanded 
+            ? Text(
+                item.label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.white60,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  fontSize: 13,
+                ),
+                overflow: TextOverflow.ellipsis,
+              )
+            : null,
+          onTap: () {
+            if (onTap != null) onTap!(item.route);
+          },
         ),
-        title: isExpanded 
-          ? Text(
-              item.label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white60,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                fontSize: 13,
-              ),
-              overflow: TextOverflow.ellipsis,
-            )
-          : null,
-        onTap: () {
-          if (onTap != null) onTap!(item.route);
-        },
       ),
     );
   }

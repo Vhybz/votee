@@ -85,9 +85,25 @@ class AdminAppBar extends ConsumerWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
-        if (actions != null) ...actions!,
+        ...?actions,
         const SizedBox(width: 8),
         _buildNotificationButton(context),
+        if (user != null) ...[
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: () => Navigator.pushNamed(context, '/admin/profile'),
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.white10,
+              backgroundImage: (user?.photoUrl?.isNotEmpty ?? false)
+                  ? NetworkImage(user!.photoUrl!)
+                  : null,
+              child: (user!.photoUrl == null || user!.photoUrl!.isEmpty)
+                  ? const Icon(Icons.person, color: Colors.white, size: 16)
+                  : null,
+            ),
+          ),
+        ],
         const SizedBox(width: 8),
         IconButton(
           onPressed: () {

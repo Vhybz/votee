@@ -11,8 +11,10 @@ import '../../models/user_model.dart';
 import '../../models/election_models.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import '../../widgets/app_footer.dart';
 import '../../services/report_service.dart';
 import '../../services/backup_service.dart';
+import '../../widgets/app_error_widget.dart';
 import 'dart:math' as math;
 
 class VotingAdminDashboard extends ConsumerStatefulWidget {
@@ -86,9 +88,14 @@ class _VotingAdminDashboardState extends ConsumerState<VotingAdminDashboard> {
                         child: statsAsync.when(
                           data: (stats) => _buildDashboardContent(stats, anomaliesAsync, isDesktop),
                           loading: () => _buildDashboardContent(_fakeStats, const AsyncValue.loading(), isDesktop),
-                          error: (err, stack) => Text('Error loading stats: $err'),
+                          error: (err, stack) => AppErrorWidget(
+                            error: err, 
+                            stackTrace: stack,
+                            onRetry: () => ref.invalidate(electionStatsProvider),
+                          ),
                         ),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),
@@ -111,7 +118,7 @@ class _VotingAdminDashboardState extends ConsumerState<VotingAdminDashboard> {
     hourlyParticipation: {8: 10, 9: 50, 10: 120, 11: 200},
   );
 
-  Widget _buildDashboardContent(ElectionStats stats, AsyncValue<List<AnomalyAlert>> anomaliesAsync, bool isDesktop) {
+  Widget _buildDashboardContent(ElectionStats stats, AsyncValue<List<Anomaly>> anomaliesAsync, bool isDesktop) {
     return Column(
       children: [
         _buildKPIGrid(stats),
@@ -622,7 +629,7 @@ class _VotingAdminDashboardState extends ConsumerState<VotingAdminDashboard> {
     );
   }
 
-  Widget _buildRecentActivity(List<AnomalyAlert> anomalies) {
+  Widget _buildRecentActivity(List<Anomaly> anomalies) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(

@@ -7,6 +7,8 @@ import '../../widgets/admin_appbar.dart';
 import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
 import '../../services/election_provider.dart';
+import '../../widgets/app_error_widget.dart';
+import '../../widgets/app_footer.dart';
 import '../../models/election_models.dart';
 import '../../core/uuid_utils.dart';
 
@@ -184,10 +186,18 @@ class _ElectionInitiationScreenState extends ConsumerState<ElectionInitiationScr
                         data: (candidates) => positionsAsync.when(
                           data: (positions) => _buildCandidateSelectionList(candidates, positions),
                           loading: () => const LinearProgressIndicator(),
-                          error: (e, s) => Text('Error: $e'),
+                          error: (e, s) => AppErrorWidget(
+                            error: e,
+                            isExpandable: false,
+                            onRetry: () => ref.invalidate(positionsProvider),
+                          ),
                         ),
                         loading: () => const Center(child: CircularProgressIndicator()),
-                        error: (e, s) => Text('Error: $e'),
+                        error: (e, s) => AppErrorWidget(
+                          error: e,
+                          isExpandable: false,
+                          onRetry: () => ref.invalidate(candidatesProvider),
+                        ),
                       ),
                       
                       const SizedBox(height: 48),
@@ -210,6 +220,7 @@ class _ElectionInitiationScreenState extends ConsumerState<ElectionInitiationScr
                           ),
                         ),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),
@@ -245,25 +256,29 @@ class _ElectionInitiationScreenState extends ConsumerState<ElectionInitiationScr
                 final children = [
                   Expanded(
                     flex: isSmall ? 0 : 1,
-                    child: ListTile(
-                      title: const Text('Start Time', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                      subtitle: Text(_startTime != null ? dateFormat.format(_startTime!) : 'Select Time', style: const TextStyle(fontSize: 11)),
-                      leading: const Icon(Icons.play_circle_outline, size: 20),
-                      onTap: () => _pickDateTime(true),
-                      tileColor: theme.brightness == Brightness.dark ? Colors.white10 : Colors.grey.shade50,
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    child: Material(
+                      color: theme.brightness == Brightness.dark ? Colors.white10 : Colors.grey.shade50,
+                      child: ListTile(
+                        title: const Text('Start Time', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                        subtitle: Text(_startTime != null ? dateFormat.format(_startTime!) : 'Select Time', style: const TextStyle(fontSize: 11)),
+                        leading: const Icon(Icons.play_circle_outline, size: 20),
+                        onTap: () => _pickDateTime(true),
+                        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                      ),
                     ),
                   ),
                   if (!isSmall) const SizedBox(width: 16) else const SizedBox(height: 12),
                   Expanded(
                     flex: isSmall ? 0 : 1,
-                    child: ListTile(
-                      title: const Text('End Time', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                      subtitle: Text(_endTime != null ? dateFormat.format(_endTime!) : 'Select Time', style: const TextStyle(fontSize: 11)),
-                      leading: const Icon(Icons.stop_circle_outlined, size: 20),
-                      onTap: () => _pickDateTime(false),
-                      tileColor: theme.brightness == Brightness.dark ? Colors.white10 : Colors.grey.shade50,
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    child: Material(
+                      color: theme.brightness == Brightness.dark ? Colors.white10 : Colors.grey.shade50,
+                      child: ListTile(
+                        title: const Text('End Time', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                        subtitle: Text(_endTime != null ? dateFormat.format(_endTime!) : 'Select Time', style: const TextStyle(fontSize: 11)),
+                        leading: const Icon(Icons.stop_circle_outlined, size: 20),
+                        onTap: () => _pickDateTime(false),
+                        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                      ),
                     ),
                   ),
                 ];

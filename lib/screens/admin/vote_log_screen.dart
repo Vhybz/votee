@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import '../../widgets/app_footer.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/admin_appbar.dart';
 import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
 import '../../services/election_provider.dart';
+import '../../widgets/app_error_widget.dart';
 
 class VoteLogScreen extends ConsumerStatefulWidget {
   const VoteLogScreen({super.key});
@@ -87,7 +89,10 @@ class _VoteLogScreenState extends ConsumerState<VoteLogScreen> {
                           builder: (context, snapshot) {
                             final isLoading = snapshot.connectionState == ConnectionState.waiting;
                             if (snapshot.hasError) {
-                              return Center(child: Text('Error: ${snapshot.error}'));
+                              return AppErrorWidget(
+                                error: snapshot.error!, 
+                                onRetry: () => setState(() {}),
+                              );
                             }
                             
                             var logs = snapshot.data ?? (isLoading ? _fakeLogs : []);
@@ -112,6 +117,7 @@ class _VoteLogScreenState extends ConsumerState<VoteLogScreen> {
                           },
                         ),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),
@@ -195,9 +201,12 @@ class _VoteLogScreenState extends ConsumerState<VoteLogScreen> {
             ),
             title: Row(
               children: [
-                Text(
-                  student?['full_name'] ?? 'Unknown Student',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                Flexible(
+                  child: Text(
+                    student?['full_name'] ?? 'Unknown Student',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -209,6 +218,8 @@ class _VoteLogScreenState extends ConsumerState<VoteLogScreen> {
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4),
               child: RichText(
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
                 text: TextSpan(
                   style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 12),
                   children: [

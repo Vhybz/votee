@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import '../../widgets/app_footer.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/admin_appbar.dart';
 import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
 import '../../services/election_provider.dart';
 import '../../models/election_models.dart';
+import '../../widgets/app_error_widget.dart';
 import '../../models/user_model.dart';
 
 final allElectionsProvider = FutureProvider<List<ElectionSettings>>((ref) async {
@@ -100,9 +102,13 @@ class _ElectionManagementScreenState extends ConsumerState<ElectionManagementScr
                             return _buildElectionsList(filteredElections);
                           },
                           loading: () => _buildElectionsList(_fakeElections),
-                          error: (e, s) => Center(child: Text('Error: $e')),
+                          error: (e, s) => AppErrorWidget(
+                            error: e,
+                            onRetry: () => ref.invalidate(allElectionsProvider),
+                          ),
                         ),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),

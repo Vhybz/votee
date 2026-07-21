@@ -194,7 +194,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         label: 'First Name',
                         icon: Icons.person_outline_rounded,
                         isDark: isDark,
-                        formatters: [FilteringTextInputFormatter.deny(RegExp(r'[0-9]'))],
+                        formatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\-]')),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       _buildTextField(
@@ -202,7 +204,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         label: 'Surname',
                         icon: Icons.person_outline_rounded,
                         isDark: isDark,
-                        formatters: [FilteringTextInputFormatter.deny(RegExp(r'[0-9]'))],
+                        formatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\-]')),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       _buildTextField(
@@ -329,7 +333,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Widget _buildRankDropdown(bool isDark, ThemeData theme) {
     return DropdownButtonFormField<String>(
-      value: _selectedRank,
+      initialValue: _selectedRank,
       dropdownColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
       style: TextStyle(color: isDark ? Colors.white : Colors.black),
       decoration: InputDecoration(
@@ -343,9 +347,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           child: Text(rank),
         );
       }).toList(),
-      onChanged: (value) {
+      onChanged: (val) {
         setState(() {
-          _selectedRank = value;
+          _selectedRank = val;
         });
       },
     );

@@ -16,18 +16,31 @@ class VoterNotifier extends StateNotifier<Student?> {
   Future<Student?> verifyIndex(String indexNumber) async {
     try {
       final student = await _service.getStudentByIndex(indexNumber);
+      
+      if (student != null) {
+        // Trigger server-side OTP generation and SMS delivery
+        await _service.generateAndSendOtp(indexNumber);
+      }
+      
       state = student;
       return student;
     } catch (e) {
+      debugPrint('Error during index verification: $e');
       return null;
     }
   }
 
-  bool verifyOtp(String otp) {
-    if (state != null && state!.otp == otp) {
-      return true;
-    }
-    return false;
+  Future<bool> verifyOtp(String otp) async {
+    if (state == null) return false;
+    
+    // Server-side verification (Fixed vulnerability: OTP no longer exists on client)
+    final isValid = await _service.verifyOtpOnServer(state!.indexNumber, otp);
+    return isValid;
+  }
+
+  Future<void> resendOtp() async {
+    if (state == null) return;
+    await _service.generateAndSendOtp(state!.indexNumber);
   }
 
   Future<bool> finalizeVote(List<Vote> votes) async {

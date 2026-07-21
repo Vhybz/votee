@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import '../../widgets/app_footer.dart';
 import '../../core/constants.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/admin_appbar.dart';
 import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
-import '../../models/election_models.dart';
 import '../../services/election_provider.dart';
 import '../../services/ip_service.dart';
+import '../../models/election_models.dart';
+import '../../widgets/app_error_widget.dart';
 
 class SuspiciousActivityScreen extends ConsumerStatefulWidget {
   const SuspiciousActivityScreen({super.key});
@@ -22,10 +24,9 @@ class _SuspiciousActivityScreenState extends ConsumerState<SuspiciousActivityScr
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final menuItems = ref.watch(menuItemsProvider);
     final anomaliesAsync = ref.watch(anomalyProvider);
-    final user = ref.watch(currentUserProvider);
+
     final size = MediaQuery.of(context).size;
     final bool isDesktop = size.width >= 1100;
 
@@ -38,11 +39,11 @@ class _SuspiciousActivityScreenState extends ConsumerState<SuspiciousActivityScr
       child: Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AdminAppBar(
-          title: 'Security Monitor',
-          user: user,
+          title: 'Suspicious Activity',
+          user: ref.watch(currentUserProvider),
         ),
         drawer: !isDesktop ? Drawer(
-          width: size.width * 0.5,
+          width: size.width * 0.66,
           child: AppSidebar(
             items: menuItems,
             currentRoute: '/admin/suspicious',
@@ -60,33 +61,24 @@ class _SuspiciousActivityScreenState extends ConsumerState<SuspiciousActivityScr
                   onTap: (route) => MenuService.navigate(context, route, '/admin/suspicious'),
                 ),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(32),
+                child: Padding(
+                  padding: EdgeInsets.all(isDesktop ? 32 : 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildHeader(),
                       const SizedBox(height: 32),
-                      Skeletonizer(
-                        enabled: anomaliesAsync.isLoading,
+                      Expanded(
                         child: anomaliesAsync.when(
-                          data: (anomalies) => Column(
-                            children: [
-                              _buildStatsGrid(anomalies.isEmpty && anomaliesAsync.isLoading ? _fakeAnomalies : anomalies),
-                              const SizedBox(height: 32),
-                              _buildAnomalyLog(isDark, anomalies.isEmpty && anomaliesAsync.isLoading ? _fakeAnomalies : anomalies),
-                            ],
+                          data: (anomalies) => _buildAnomalyList(anomalies),
+                          loading: () => Skeletonizer(
+                            enabled: true,
+                            child: _buildAnomalyList(_fakeAnomalies),
                           ),
-                          loading: () => Column(
-                            children: [
-                              _buildStatsGrid(_fakeAnomalies),
-                              const SizedBox(height: 32),
-                              _buildAnomalyLog(isDark, _fakeAnomalies),
-                            ],
-                          ),
-                          error: (err, stack) => Center(child: Text('Error loading security logs: $err')),
+                          error: (e, s) => AppErrorWidget(error: e, onRetry: () => ref.invalidate(anomalyProvider)),
                         ),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),
@@ -97,178 +89,103 @@ class _SuspiciousActivityScreenState extends ConsumerState<SuspiciousActivityScr
       ),
     );
   }
-
-  static final List<AnomalyAlert> _fakeAnomalies = List.generate(3, (index) => AnomalyAlert(
-    id: 'fake-$index',
-    title: 'Sample Security Alert',
-    details: 'This is a sample description of a potential security anomaly detected by the system.',
-    time: '2 mins ago',
-    severity: index == 0 ? AnomalySeverity.high : AnomalySeverity.medium,
-  ));
 
   Widget _buildHeader() {
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 16,
-      runSpacing: 16,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Text(
+          'Fraud Detection',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 28, 
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.5,
+          ),
+        ),
+        Text(
+          'Review flagged anomalies and security alerts',
+          style: GoogleFonts.inter(color: AppColors.textLight, fontSize: 13),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnomalyList(List<Anomaly> anomalies) {
+    if (anomalies.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              'Fraud Detection',
-              style: GoogleFonts.plusJakartaSans(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              'Monitoring potential voting anomalies and system breaches',
-              style: GoogleFonts.inter(color: AppColors.textLight, fontSize: 12),
-            ),
+            Icon(Icons.security_rounded, size: 64, color: Colors.green.withValues(alpha: 0.1)),
+            const SizedBox(height: 16),
+            const Text('No suspicious activity detected', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+            const Text('System status is optimal', style: TextStyle(color: Colors.grey, fontSize: 12)),
           ],
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.zero,
-            border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: anomalies.length,
+      padding: const EdgeInsets.only(bottom: 24),
+      itemBuilder: (context, index) {
+        final anomaly = anomalies[index];
+        final severityColor = _getSeverityColor(anomaly.severity);
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.m),
+            side: BorderSide(color: severityColor.withValues(alpha: 0.2)),
           ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
+          child: ExpansionTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: severityColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.warning_amber_rounded, color: severityColor, size: 20),
+            ),
+            title: Text(anomaly.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            subtitle: Text(
+              'Detected at ${anomaly.createdAt.toString().split('.')[0]}',
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
             children: [
-              Icon(Icons.verified_user_outlined, color: Colors.green, size: 20),
-              SizedBox(width: 8),
-              Text('SYSTEM SECURE', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 10)),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Alert Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Text(anomaly.details, style: const TextStyle(fontSize: 13)),
+                    const SizedBox(height: 16),
+                    if (anomaly.ipAddress != null) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.lan_outlined, size: 14, color: Colors.grey),
+                          const SizedBox(width: 8),
+                          Text('Source IP: ${anomaly.ipAddress}', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () => _handleBlacklist(anomaly.ipAddress!),
+                            icon: const Icon(Icons.block, size: 14),
+                            label: const Text('BLACKLIST IP', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatsGrid(List<AnomalyAlert> alerts) {
-    final highCount = alerts.where((a) => a.severity == AnomalySeverity.high).length;
-    final mediumCount = alerts.where((a) => a.severity == AnomalySeverity.medium).length;
-    final lowCount = alerts.where((a) => a.severity == AnomalySeverity.low).length;
-
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 24,
-      mainAxisSpacing: 24,
-      childAspectRatio: 3.0,
-      children: [
-        _buildStatCard('High Severity', highCount.toString(), Colors.red, Icons.gpp_bad),
-        _buildStatCard('Medium Severity', mediumCount.toString(), Colors.orange, Icons.warning_amber_rounded),
-        _buildStatCard('Informational', lowCount.toString(), Colors.blue, Icons.info_outline),
-      ],
-    );
-  }
-
-  Widget _buildStatCard(String label, String value, Color color, IconData icon) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(value, style: GoogleFonts.plusJakartaSans(fontSize: 20, color: color, fontWeight: FontWeight.bold)),
-                  Text(label, style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w500)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAnomalyLog(bool isDark, List<AnomalyAlert> alerts) {
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Anomaly Log', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                TextButton.icon(
-                  onPressed: () => ref.invalidate(anomalyProvider),
-                  icon: const Icon(Icons.refresh, size: 16),
-                  label: const Text('REFRESH', style: TextStyle(fontSize: 12)),
-                ),
-              ],
-            ),
-          ),
-          if (alerts.isEmpty)
-             const Padding(
-               padding: EdgeInsets.all(48.0),
-               child: Center(child: Text('No anomalies detected. System is clean.')),
-             )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: alerts.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final alert = alerts[index];
-                final color = _getSeverityColor(alert.severity);
-                
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.zero,
-                    ),
-                    child: Icon(
-                      _getSeverityIcon(alert.severity),
-                      color: color,
-                      size: 18,
-                    ),
-                  ),
-                  title: Row(
-                    children: [
-                      Expanded(child: Text(alert.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
-                      const SizedBox(width: 12),
-                      _buildSeverityBadge(alert.severity),
-                    ],
-                  ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(alert.details, style: TextStyle(color: isDark ? Colors.white60 : Colors.grey[600], fontSize: 12)),
-                  ),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(alert.time, style: TextStyle(color: Colors.grey[400], fontSize: 10)),
-                      const SizedBox(height: 4),
-                      const Icon(Icons.chevron_right, size: 14, color: Colors.grey),
-                    ],
-                  ),
-                  onTap: () => _showAlertDetails(alert),
-                );
-              },
-            ),
-          const SizedBox(height: 16),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -280,72 +197,39 @@ class _SuspiciousActivityScreenState extends ConsumerState<SuspiciousActivityScr
     }
   }
 
-  IconData _getSeverityIcon(AnomalySeverity severity) {
-    switch (severity) {
-      case AnomalySeverity.high: return Icons.gpp_bad;
-      case AnomalySeverity.medium: return Icons.warning_amber_rounded;
-      case AnomalySeverity.low: return Icons.info_outline;
-    }
-  }
-
-  Widget _buildSeverityBadge(AnomalySeverity severity) {
-    final color = _getSeverityColor(severity);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Text(
-        severity.name.toUpperCase(),
-        style: TextStyle(color: color, fontSize: 8, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  void _showAlertDetails(AnomalyAlert alert) {
-    // Try to extract IP from details if possible (e.g. "10.24.51.92")
-    final ipMatch = RegExp(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b').firstMatch(alert.details);
-    final detectedIp = ipMatch?.group(0);
-
-    showDialog(
+  Future<void> _handleBlacklist(String ip) async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(alert.title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Time: ${alert.time}'),
-            const SizedBox(height: 12),
-            Text(alert.details),
-            const SizedBox(height: 16),
-            const Text('AI Recommendation:', style: TextStyle(fontWeight: FontWeight.bold)),
-            const Text('The system recommends flagging this ID for secondary audit before certifying results.'),
-          ],
-        ),
+        title: const Text('Blacklist IP Address?'),
+        content: Text('Do you want to permanently restrict access from $ip?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('DISMISS')),
-          if (detectedIp != null)
-            ElevatedButton.icon(
-              onPressed: () async {
-                final admin = ref.read(currentUserProvider);
-                if (admin != null) {
-                  await IpService().blacklistIp(detectedIp, 'Anomalous activity: ${alert.title}', admin.id);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('IP $detectedIp Blacklisted')));
-                  }
-                }
-              },
-              icon: const Icon(Icons.block, size: 18),
-              label: const Text('BLACKLIST IP'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            ),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('FLAG FOR AUDIT')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('CONFIRM BLACKLIST'),
+          ),
         ],
       ),
     );
+
+    if (confirmed == true) {
+      final admin = ref.read(currentUserProvider);
+      if (admin != null) {
+        await ref.read(ipServiceProvider).blacklistIp(ip, 'Suspicious activity detected', admin.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('IP $ip has been blacklisted.')));
+        }
+      }
+    }
   }
+
+  static final List<Anomaly> _fakeAnomalies = List.generate(3, (index) => Anomaly(
+    id: 'fake-$index',
+    title: 'Simulated Alert',
+    details: 'This is a placeholder for a security event alert.',
+    severity: index == 0 ? AnomalySeverity.high : AnomalySeverity.medium,
+    createdAt: DateTime.now(),
+  ));
 }

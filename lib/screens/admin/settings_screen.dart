@@ -10,8 +10,10 @@ import '../../services/user_provider.dart';
 import '../../services/theme_provider.dart';
 import '../../services/election_provider.dart';
 import '../../services/backup_service.dart';
+import '../../widgets/app_footer.dart';
 import '../../models/election_models.dart';
 import '../../models/user_model.dart';
+import '../../widgets/app_error_widget.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -89,7 +91,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       settingsAsync.when(
                         data: (settings) => _buildElectionTimingCard(context, ref, settings),
                         loading: () => const Center(child: LinearProgressIndicator()),
-                        error: (e, s) => Text('Error loading settings: $e'),
+                        error: (e, s) => AppErrorWidget(
+                          error: e,
+                          isExpandable: false,
+                          onRetry: () => ref.invalidate(electionSettingsProvider),
+                        ),
                       ),
     
                       const SizedBox(height: 24),
@@ -120,6 +126,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         loading: () => const SizedBox(),
                         error: (e, s) => const SizedBox(),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),
@@ -132,29 +139,58 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildBackupCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Card(
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Colors.blue,
-                child: Icon(Icons.cloud_download_rounded, color: Colors.white, size: 20),
-              ),
-              title: const Text('System Snapshot', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              subtitle: const Text('Export all election data, logs, and student records to a JSON file.', style: TextStyle(fontSize: 11)),
-              trailing: _isBackingUp 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : ElevatedButton(
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.cloud_download_rounded, color: Colors.blue, size: 24),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('System Snapshot', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('Export election data and logs', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'A full database export includes all registered students, candidate records, audit logs, and system settings in a secure JSON format.',
+              style: TextStyle(fontSize: 12, color: isDark ? Colors.white60 : AppColors.textLight, height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: _isBackingUp 
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                : ElevatedButton.icon(
                     onPressed: _handleManualBackup,
+                    icon: const Icon(Icons.download_rounded, size: 18),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
                     ),
-                    child: const Text('BACKUP NOW', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    label: const Text('GENERATE BACKUP', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
                   ),
             ),
           ],

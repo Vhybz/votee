@@ -45,7 +45,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with TickerProvider
   }
 
   Future<void> _navigateToNext() async {
-    await Future.delayed(const Duration(seconds: 4));
+    // Wait for at least 3 seconds for visual impact
+    await Future.delayed(const Duration(seconds: 3));
+
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/voter/verify');
     }

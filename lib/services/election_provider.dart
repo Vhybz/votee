@@ -10,12 +10,16 @@ final electionSettingsProvider = StreamProvider<ElectionSettings>((ref) {
   return ref.watch(electionServiceProvider).watchSettings();
 });
 
-final positionsProvider = FutureProvider<List<Position>>((ref) async {
-  return ref.watch(electionServiceProvider).getPositions();
+final allElectionsProvider = StreamProvider<List<ElectionSettings>>((ref) {
+  return ref.watch(electionServiceProvider).watchAllElections();
 });
 
-final candidatesProvider = FutureProvider<List<Candidate>>((ref) async {
-  return ref.watch(electionServiceProvider).getAllCandidates();
+final positionsProvider = StreamProvider<List<Position>>((ref) {
+  return ref.watch(electionServiceProvider).watchPositions();
+});
+
+final candidatesProvider = StreamProvider<List<Candidate>>((ref) {
+  return ref.watch(electionServiceProvider).watchCandidates();
 });
 
 final votersListProvider = FutureProvider<List<Student>>((ref) async {
@@ -30,6 +34,6 @@ final electionStatsProvider = StreamProvider<ElectionStats>((ref) async* {
   }
 });
 
-final anomalyProvider = FutureProvider<List<AnomalyAlert>>((ref) async {
+final anomalyProvider = FutureProvider<List<Anomaly>>((ref) async {
   return ref.watch(electionServiceProvider).getAnomalies();
 });

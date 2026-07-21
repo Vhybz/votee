@@ -3,14 +3,12 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class SmsService {
-  static String get _apiKey => const String.fromEnvironment('ARKESEL_API_KEY', defaultValue: '')
-      .isEmpty ? (dotenv.env['ARKESEL_API_KEY'] ?? '') : const String.fromEnvironment('ARKESEL_API_KEY');
-  
-  static String get _senderId => const String.fromEnvironment('ARKESEL_SENDER_ID', defaultValue: '')
-      .isEmpty ? (dotenv.env['ARKESEL_SENDER_ID'] ?? 'RavenVote') : const String.fromEnvironment('ARKESEL_SENDER_ID');
+  static const String _apiKey = String.fromEnvironment('ARKESEL_API_KEY');
+  static const String _senderId = String.fromEnvironment('ARKESEL_SENDER_ID', defaultValue: 'RavenVote');
 
   static Future<bool> _sendSms(String to, String message) async {
     if (_apiKey.isEmpty) {
+      debugPrint('WARNING: SMS API Key is missing. Check --dart-define.');
       debugPrint('SIMULATED SMS to $to: $message');
       return true;
     }

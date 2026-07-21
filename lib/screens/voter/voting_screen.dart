@@ -6,6 +6,7 @@ import '../../core/constants.dart';
 import '../../models/election_models.dart';
 import '../../services/voter_provider.dart';
 import '../../services/election_provider.dart';
+import '../../widgets/app_error_widget.dart';
 
 class VotingScreen extends ConsumerStatefulWidget {
   const VotingScreen({super.key});
@@ -117,10 +118,23 @@ class _VotingScreenState extends ConsumerState<VotingScreen> {
             );
           },
           loading: () => const SizedBox(), // Handled by Skeletonizer
-          error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
+          error: (e, s) => Scaffold(
+            body: AppErrorWidget(
+              error: e,
+              onRetry: () {
+                ref.invalidate(positionsProvider);
+                ref.invalidate(candidatesProvider);
+              },
+            ),
+          ),
         ),
         loading: () => const SizedBox(), // Handled by Skeletonizer
-        error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
+        error: (e, s) => Scaffold(
+          body: AppErrorWidget(
+            error: e,
+            onRetry: () => ref.invalidate(positionsProvider),
+          ),
+        ),
       ),
     );
   }
@@ -497,7 +511,7 @@ class _VotingScreenState extends ConsumerState<VotingScreen> {
     final bool canGoNext = (_selections[positions[_currentPositionIndex].id]?.isNotEmpty ?? false);
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(context).padding.bottom),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF121212) : Colors.white,
         boxShadow: [

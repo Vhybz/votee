@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import '../../widgets/app_footer.dart';
 import '../../core/constants.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/admin_appbar.dart';
@@ -9,6 +10,7 @@ import '../../services/menu_service.dart';
 import '../../services/election_provider.dart';
 import '../../services/user_provider.dart';
 import '../../models/election_models.dart';
+import '../../widgets/app_error_widget.dart';
 
 class LiveResultsScreen extends ConsumerWidget {
   const LiveResultsScreen({super.key});
@@ -66,12 +68,22 @@ class LiveResultsScreen extends ConsumerWidget {
                           data: (positions) => candidatesAsync.when(
                             data: (candidates) => _buildResultsList(theme, positions, candidates, false),
                             loading: () => _buildResultsList(theme, _fakePositions, _fakeCandidates, true),
-                            error: (e, _) => Center(child: Text('Error: $e')),
+                            error: (e, s) => AppErrorWidget(
+                              error: e,
+                              onRetry: () {
+                                ref.invalidate(positionsProvider);
+                                ref.invalidate(candidatesProvider);
+                              },
+                            ),
                           ),
                           loading: () => _buildResultsList(theme, _fakePositions, _fakeCandidates, true),
-                          error: (e, _) => Center(child: Text('Error: $e')),
+                          error: (e, s) => AppErrorWidget(
+                            error: e,
+                            onRetry: () => ref.invalidate(positionsProvider),
+                          ),
                         ),
                       ),
+                      const AppFooter(),
                     ],
                   ),
                 ),
